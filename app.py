@@ -109,8 +109,40 @@ mail = Mail(app)
 db.init_app(app)
 bcrypt.init_app(app)
 
+def migrate_lab_pi_columns():
+    """Add missing columns to lab_pi table if they don't exist"""
+    from sqlalchemy import text
+    try:
+        # Add device_type column
+        db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN device_type VARCHAR(50) DEFAULT "Raspberry Pi"'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        # Add firmware_version column
+        db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN firmware_version VARCHAR(20) DEFAULT "1.0"'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        # Add hardware_version column
+        db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN hardware_version VARCHAR(20)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        # Add location column
+        db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN location VARCHAR(100)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
 with app.app_context():
     db.create_all()
+    migrate_lab_pi_columns()
     # Create default admin user if not exists
     if not User.query.filter_by(email='admin@vlab.edu').first():
         admin = User(
