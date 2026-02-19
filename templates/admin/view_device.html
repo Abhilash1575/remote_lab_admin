@@ -83,7 +83,7 @@
                     <div class="info-item"><span class="info-label">MAC Address:</span><span class="info-value">{{ device.mac_address or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">IP Address:</span><span class="info-value">{{ device.ip_address or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">Location:</span><span class="info-value">{{ device.location or '-' }}</span></div>
-                    <div class="info-item"><span class="info-label">Status:</span><span class="info-value"><span class="status-badge {{ device.status.lower() }}">{{ device.status }}</span></span></div>
+                    <div class="info-item"><span class="info-label">Status:</span><span class="info-value"><span class="status-badge {{ (device.status or 'unknown').lower() }}">{{ device.status or 'UNKNOWN' }}</span></span></div>
                 </div>
                 <div class="info-card">
                     <h4><i class="fas fa-chart-line"></i> System Information</h4>

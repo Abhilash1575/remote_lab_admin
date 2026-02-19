@@ -456,8 +456,8 @@
                             <td>{{ device.ip_address }}</td>
                             <td>{{ device.location }}</td>
                             <td>
-                                <span class="status-badge {{ device.status.lower() }}">
-                                    {{ device.status }}
+                                <span class="status-badge {{ (device.status or 'unknown').lower() }}">
+                                    {{ device.status or 'UNKNOWN' }}
                                 </span>
                             </td>
                             <td>{{ device.last_seen.strftime('%Y-%m-%d %H:%M') if device.last_seen else '-' }}</td>
@@ -568,8 +568,8 @@
                             <td>{{ lab_pi.mac_address or '-' }}</td>
                             <td>{{ lab_pi.ip_address }}</td>
                             <td>
-                                <span class="status-badge {{ lab_pi.status.lower() }}">
-                                    {{ lab_pi.status }}
+                                <span class="status-badge {{ (lab_pi.status or 'unknown').lower() }}">
+                                    {{ lab_pi.status or 'UNKNOWN' }}
                                 </span>
                             </td>
                             <td>{{ lab_pi.cpu_usage|round(1) if lab_pi.cpu_usage is not none else '-' }}%</td>
