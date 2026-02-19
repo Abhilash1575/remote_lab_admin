@@ -1545,6 +1545,29 @@ def my_bookings():
     db.session.commit()
     return render_template('my_bookings.html', bookings=bookings)
 
+@app.route('/my-bookings-data')
+@login_required
+def my_bookings_data():
+    """API endpoint to get booking data for AJAX refresh"""
+    bookings = Booking.query.filter_by(user_id=current_user.id).order_by(Booking.start_time.desc()).all()
+    
+    # Update booking statuses
+    now = datetime.now()
+    for booking in bookings:
+        if booking.status == 'UPCOMING':
+            if now < booking.start_time:
+                booking.status = 'UPCOMING'
+            elif booking.start_time <= now <= booking.end_time:
+                booking.status = 'ACTIVE'
+            elif now > booking.end_time:
+                booking.status = 'EXPIRED'
+        elif booking.status == 'ACTIVE':
+            if now > booking.end_time:
+                booking.status = 'EXPIRED'
+    
+    db.session.commit()
+    return render_template('my_bookings.html', bookings=bookings)
+
 @app.route('/cancel_booking/<int:booking_id>')
 @login_required
 def cancel_booking(booking_id):
@@ -2220,6 +2243,41 @@ def lab_pi_send_command(lab_pi_id):
         return jsonify({'success': True, 'message': 'Hardware power OFF'})
     
     return jsonify({'error': 'Unknown command'}), 400
+
+
+# ---------- AUDIO STREAMING ----------
+# Audio will be streamed from Lab Pi to Master Pi, and then broadcast to connected clients
+# The actual audio handling is done via SocketIO in the Audio server
+# This endpoint receives audio from Lab Pi and broadcasts via SocketIO
+
+@app.route('/api/audio/stream', methods=['POST'])
+def receive_audio_stream():
+    """
+    Receive audio stream from Lab Pi and broadcast to connected clients via SocketIO
+    """
+    try:
+        data = request.json
+        lab_pi_id = data.get('lab_pi_id')
+        audio_b64 = data.get('audio')
+        sample_rate = data.get('sample_rate', 16000)
+        channels = data.get('channels', 1)
+        
+        if not lab_pi_id or not audio_b64:
+            return jsonify({'error': 'Missing lab_pi_id or audio'}), 400
+        
+        # Broadcast to all connected clients
+        socketio.emit('audio_data', {
+            'lab_pi_id': lab_pi_id,
+            'audio': audio_b64,
+            'sample_rate': sample_rate,
+            'channels': channels
+        })
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        print(f"Error receiving audio: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 # ---------- MOCK GENERATOR ----------

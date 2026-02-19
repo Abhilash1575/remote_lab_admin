@@ -438,30 +438,30 @@
     <script>
         // Auto-update booking statuses
         function updateBookingStatuses() {
-            const now = new Date();
-            const bookingCards = document.querySelectorAll('.booking-card');
-            
-            bookingCards.forEach(card => {
-                const statusElement = card.querySelector('.booking-status');
-                const status = statusElement.textContent.trim();
-                const dateElement = card.querySelector('.booking-detail .fa-calendar').nextElementSibling;
-                const timeElement = card.querySelector('.booking-detail .fa-clock').nextElementSibling;
-                
-                if (status === 'UPCOMING') {
-                    const [dateStr, timeStr] = [
-                        dateElement.textContent,
-                        timeElement.textContent.split(' - ')[0]
-                    ];
+            // Fetch fresh booking data from server
+            fetch('/my-bookings-data')
+                .then(response => response.text())
+                .then(html => {
+                    // Parse the response and update booking cards
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const newBookingCards = doc.querySelectorAll('.booking-card');
+                    const currentBookingCards = document.querySelectorAll('.booking-card');
                     
-                    const bookingTime = new Date(`${dateStr} ${timeStr}`);
-                    const currentTime = new Date();
-                    
-                    if (currentTime >= bookingTime) {
-                        statusElement.textContent = 'ACTIVE';
-                        statusElement.className = 'booking-status active';
-                    }
-                }
-            });
+                    // Update each booking card status
+                    currentBookingCards.forEach((card, index) => {
+                        const newCard = newBookingCards[index];
+                        if (newCard) {
+                            const newStatusElement = newCard.querySelector('.booking-status');
+                            const currentStatusElement = card.querySelector('.booking-status');
+                            if (newStatusElement && currentStatusElement) {
+                                currentStatusElement.textContent = newStatusElement.textContent;
+                                currentStatusElement.className = newStatusElement.className;
+                            }
+                        }
+                    });
+                })
+                .catch(err => console.log('Error updating booking statuses:', err));
         }
 
         // Update statuses every minute
