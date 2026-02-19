@@ -235,7 +235,7 @@ class LabPi(db.Model):
     location = db.Column(db.String(100))
     
     # Network identification
-    mac_address = db.Column(db.String(17), unique=True, nullable=True)
+    mac_address = db.Column(db.String(17), nullable=True)  # Removed unique constraint - use lab_pi_id as unique identifier
     ip_address = db.Column(db.String(45))
     hostname = db.Column(db.String(100))
     
