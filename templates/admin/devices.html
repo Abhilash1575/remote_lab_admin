@@ -539,6 +539,7 @@
                         <tr>
                             <th>Lab Pi ID</th>
                             <th>Name</th>
+                            <th>Experiment</th>
                             <th>MAC Address</th>
                             <th>IP Address</th>
                             <th>Status</th>
@@ -557,6 +558,13 @@
                         <tr>
                             <td>{{ lab_pi.lab_pi_id }}</td>
                             <td>{{ lab_pi.name }}</td>
+                            <td>
+                                {% if lab_pi.experiment %}
+                                    <span style="color: #00C4FF; font-weight: bold;">{{ lab_pi.experiment.name }}</span>
+                                {% else %}
+                                    <span style="color: #999;">Not Assigned</span>
+                                {% endif %}
+                            </td>
                             <td>{{ lab_pi.mac_address or '-' }}</td>
                             <td>{{ lab_pi.ip_address }}</td>
                             <td>

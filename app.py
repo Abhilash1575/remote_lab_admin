@@ -2120,13 +2120,32 @@ def lab_pi_list():
 
 
 # Admin Lab Pi Action Routes
-@app.route('/admin/lab-pi/edit/<int:lab_pi_id>', methods=['GET'])
+@app.route('/admin/lab-pi/edit/<int:lab_pi_id>', methods=['GET', 'POST'])
 @login_required
 def admin_lab_pi_edit(lab_pi_id):
     if not current_user.is_admin:
         abort(403)
+    
     lab_pi = LabPi.query.get_or_404(lab_pi_id)
     experiments = Experiment.query.all()
+    
+    if request.method == 'POST':
+        # Update Lab Pi fields
+        lab_pi.name = request.form.get('name', lab_pi.name)
+        lab_pi.mac_address = request.form.get('mac_address') or None
+        lab_pi.ip_address = request.form.get('ip_address') or None
+        lab_pi.hostname = request.form.get('hostname') or None
+        lab_pi.status = request.form.get('status', lab_pi.status)
+        lab_pi.hardware_ready = 'hardware_ready' in request.form
+        
+        # Update experiment assignment
+        experiment_id = request.form.get('experiment_id')
+        lab_pi.experiment_id = int(experiment_id) if experiment_id else None
+        
+        db.session.commit()
+        flash(f'Lab Pi "{lab_pi.name}" updated successfully!', 'success')
+        return redirect(url_for('manage_devices'))
+    
     return render_template('admin/edit_device.html', device=lab_pi, experiments=experiments, is_lab_pi=True)
 
 
