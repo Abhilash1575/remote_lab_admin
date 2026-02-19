@@ -194,6 +194,65 @@ def start_session_monitor():
         session_monitor_thread.start()
         print("Session monitor started")
 
+# Lab Pi Heartbeat Monitor
+LAB_PI_HEARTBEAT_TIMEOUT = 60  # seconds - considered offline if no heartbeat for 60 seconds
+lab_pi_monitor_thread = None
+
+def run_lab_pi_heartbeat_monitor():
+    """Background task to check Lab Pi heartbeat and update offline status"""
+    while True:
+        try:
+            with app.app_context():
+                now = datetime.utcnow()
+                timeout_threshold = now - timedelta(seconds=LAB_PI_HEARTBEAT_TIMEOUT)
+                
+                # Find Lab Pis that are ONLINE but haven't sent heartbeat within timeout
+                offline_lab_pis = LabPi.query.filter(
+                    LabPi.status == 'ONLINE',
+                    LabPi.last_heartbeat < timeout_threshold
+                ).all()
+                
+                for lab_pi in offline_lab_pis:
+                    # Update status to OFFLINE
+                    old_status = lab_pi.status
+                    lab_pi.status = 'OFFLINE'
+                    
+                    # Log the offline event
+                    log_entry = SystemLog(
+                        level='WARNING',
+                        category='SYSTEM',
+                        message=f'Lab Pi {lab_pi.lab_pi_id} ({lab_pi.name}) went OFFLINE - No heartbeat received for {LAB_PI_HEARTBEAT_TIMEOUT} seconds',
+                        device_id=lab_pi.id
+                    )
+                    db.session.add(log_entry)
+                    
+                    # Clear sensitive data when going offline
+                    lab_pi.cpu_usage = None
+                    lab_pi.ram_usage = None
+                    lab_pi.temperature = None
+                    lab_pi.battery_soc = None
+                    lab_pi.battery_voltage = None
+                    lab_pi.uptime = None
+                    
+                    print(f"Lab Pi {lab_pi.lab_pi_id} ({lab_pi.name}) marked as OFFLINE - No heartbeat since {lab_pi.last_heartbeat}")
+                
+                if offline_lab_pis:
+                    db.session.commit()
+                    
+        except Exception as e:
+            print(f"Error in Lab Pi heartbeat monitor: {e}")
+        
+        # Check every 10 seconds
+        time.sleep(10)
+
+def start_lab_pi_heartbeat_monitor():
+    global lab_pi_monitor_thread
+    if lab_pi_monitor_thread is None:
+        lab_pi_monitor_thread = threading.Thread(target=run_lab_pi_heartbeat_monitor, daemon=True)
+        lab_pi_monitor_thread.start()
+        print("Lab Pi heartbeat monitor started")
+
+
 serial_lock = threading.Lock()
 ser = None
 ser_stop = threading.Event()
@@ -479,6 +538,36 @@ def manage_devices():
         db.session.commit()
         flash('Device added successfully', 'success')
         return redirect(url_for('manage_devices'))
+    
+    # Check Lab Pi heartbeat timeout and update status
+    now = datetime.utcnow()
+    timeout_threshold = now - timedelta(seconds=LAB_PI_HEARTBEAT_TIMEOUT)
+    
+    # Update Lab Pi statuses
+    offline_lab_pis = LabPi.query.filter(
+        LabPi.status == 'ONLINE',
+        LabPi.last_heartbeat < timeout_threshold
+    ).all()
+    
+    for lab_pi in offline_lab_pis:
+        lab_pi.status = 'OFFLINE'
+        log_entry = SystemLog(
+            level='WARNING',
+            category='SYSTEM',
+            message=f'Lab Pi {lab_pi.lab_pi_id} ({lab_pi.name}) went OFFLINE - No heartbeat received for {LAB_PI_HEARTBEAT_TIMEOUT} seconds',
+            device_id=lab_pi.id
+        )
+        db.session.add(log_entry)
+        # Clear metrics when offline
+        lab_pi.cpu_usage = None
+        lab_pi.ram_usage = None
+        lab_pi.temperature = None
+        lab_pi.battery_soc = None
+        lab_pi.battery_voltage = None
+        lab_pi.uptime = None
+    
+    if offline_lab_pis:
+        db.session.commit()
     
     devices = Device.query.all()
     lab_pis = LabPi.query.all()
@@ -1052,6 +1141,16 @@ def delete_experiment(exp_id):
     
     experiment = Experiment.query.get(exp_id)
     if experiment:
+        # Check if there are any bookings for this experiment
+        if experiment.bookings and len(experiment.bookings) > 0:
+            flash(f'Cannot delete experiment "{experiment.name}" - it has {len(experiment.bookings)} associated booking(s). Please cancel or delete the bookings first.', 'danger')
+            return redirect(url_for('manage_experiments'))
+        
+        # Also check Lab Pis assigned to this experiment
+        if experiment.lab_pis and len(experiment.lab_pis) > 0:
+            flash(f'Cannot delete experiment "{experiment.name}" - it is assigned to {len(experiment.lab_pis)} Lab Pi device(s). Please unassign them first.', 'danger')
+            return redirect(url_for('manage_experiments'))
+        
         db.session.delete(experiment)
         db.session.commit()
         flash('Experiment deleted successfully', 'success')
@@ -2475,6 +2574,9 @@ if __name__ == '__main__':
     
     # Start the session monitor background task
     start_session_monitor()
+    
+    # Start the Lab Pi heartbeat monitor
+    start_lab_pi_heartbeat_monitor()
     
     try:
         socketio.run(app, host='0.0.0.0', port=5000)

@@ -779,9 +779,27 @@
         }
         function deleteLabPi(labPiId) {
             if (confirm('DELETE this Lab Pi? This cannot be undone.')) {
-                fetch('/admin/lab-pi/delete/' + labPiId, { method: 'POST' })
-                    .then(res => res.json())
-                    .then(data => { if (data.success) window.location.reload(); });
+                fetch('/admin/lab-pi/delete/' + labPiId, {
+                    method: 'POST',
+                    credentials: 'same-origin'  // Include cookies for authentication
+                })
+                .then(res => {
+                    if (!res.ok) {
+                        throw new Error('HTTP error ' + res.status);
+                    }
+                    return res.json();
+                })
+                .then(data => { 
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert(data.error || 'Failed to delete Lab Pi');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error deleting Lab Pi:', error);
+                    alert('Failed to delete Lab Pi: ' + error.message);
+                });
             }
         }
     </script>
