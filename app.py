@@ -2013,7 +2013,12 @@ def lab_pi_register():
     lab_pi_id = data.get('lab_pi_id')
     # Accept 'name' or 'lab_pi_name' for backwards compatibility
     name = data.get('name') or data.get('lab_pi_name', 'Unknown Lab Pi')
-    mac_address = data.get('mac_address') or None  # Treat empty string as NULL
+    mac_address = data.get('mac_address')
+    # Only set mac_address if it's a valid non-empty value
+    if mac_address is None or mac_address.strip() == '':
+        mac_address = None
+    else:
+        mac_address = mac_address.strip()
     ip_address = data.get('ip_address') or None
     hostname = data.get('hostname') or None
     experiment_id = data.get('experiment_id')
