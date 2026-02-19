@@ -228,6 +228,12 @@ class LabPi(db.Model):
     # Display name
     name = db.Column(db.String(100), nullable=False)
     
+    # Device information
+    device_type = db.Column(db.String(50), default='Raspberry Pi')  # e.g., Raspberry Pi
+    firmware_version = db.Column(db.String(20), default='1.0')
+    hardware_version = db.Column(db.String(20))
+    location = db.Column(db.String(100))
+    
     # Network identification
     mac_address = db.Column(db.String(17), unique=True)
     ip_address = db.Column(db.String(45))

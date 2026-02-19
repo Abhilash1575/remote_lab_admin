@@ -1980,10 +1980,16 @@ def lab_pi_register():
     
     lab_pi_id = data.get('lab_pi_id')
     name = data.get('name')
-    mac_address = data.get('mac_address')
-    ip_address = data.get('ip_address')
-    hostname = data.get('hostname')
+    mac_address = data.get('mac_address') or None  # Treat empty string as NULL
+    ip_address = data.get('ip_address') or None
+    hostname = data.get('hostname') or None
     experiment_id = data.get('experiment_id')
+    
+    # New fields
+    device_type = data.get('device_type') or 'Raspberry Pi'
+    firmware_version = data.get('firmware_version') or '1.0'
+    hardware_version = data.get('hardware_version')
+    location = data.get('location')
     
     # Check if Lab Pi already exists
     existing = LabPi.query.filter_by(lab_pi_id=lab_pi_id).first()
@@ -1991,10 +1997,14 @@ def lab_pi_register():
     if existing:
         # Update existing Lab Pi
         existing.name = name
-        existing.mac_address = mac_address
-        existing.ip_address = ip_address
-        existing.hostname = hostname
+        existing.mac_address = mac_address or existing.mac_address  # Keep existing if empty
+        existing.ip_address = ip_address or existing.ip_address
+        existing.hostname = hostname or existing.hostname
         existing.experiment_id = experiment_id
+        existing.device_type = device_type
+        existing.firmware_version = firmware_version
+        existing.hardware_version = hardware_version or existing.hardware_version
+        existing.location = location or existing.location
         existing.status = 'ONLINE'
         existing.last_heartbeat = datetime.utcnow()
         db.session.commit()
@@ -2023,6 +2033,10 @@ def lab_pi_register():
         ip_address=ip_address,
         hostname=hostname,
         experiment_id=experiment_id,
+        device_type=device_type,
+        firmware_version=firmware_version,
+        hardware_version=hardware_version,
+        location=location,
         status='ONLINE',
         registered_at=datetime.utcnow(),
         last_heartbeat=datetime.utcnow()
@@ -2030,7 +2044,8 @@ def lab_pi_register():
     db.session.add(lab_pi)
     
     # Log new registration
-    exp_name = Experiment.query.get(experiment_id).name if experiment_id else 'Unknown'
+    exp = Experiment.query.get(experiment_id) if experiment_id else None
+    exp_name = exp.name if exp else 'Unknown'
     log_entry = SystemLog(
         level='INFO',
         category='SYSTEM',
@@ -2305,8 +2320,16 @@ def admin_lab_pi_reboot(lab_pi_id):
 def admin_lab_pi_delete(lab_pi_id):
     if not current_user.is_admin:
         return jsonify({'error': 'Unauthorized'}), 401
-    lab_pi = LabPi.query.get_or_404(lab_pi_id)
-    db.session.delete(lab_pi)
+    
+    # Check if Lab Pi exists
+    result = db.session.execute(db.text('SELECT id, lab_pi_id FROM lab_pi WHERE id = :id'), {'id': lab_pi_id})
+    lab_pi_row = result.fetchone()
+    if not lab_pi_row:
+        return jsonify({'error': 'Lab Pi not found'}), 404
+    
+    # Delete using raw SQL - completely bypass ORM
+    db.session.execute(db.text('DELETE FROM lab_pi_heartbeat WHERE lab_pi_id = :id'), {'id': lab_pi_id})
+    db.session.execute(db.text('DELETE FROM lab_pi WHERE id = :id'), {'id': lab_pi_id})
     db.session.commit()
     return jsonify({'success': True})
 
