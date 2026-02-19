@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Stream - Lab Pi</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a2e;
+            color: #fff;
+        }
+        
+        .header {
+            background: #16213e;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            color: #00d9ff;
+            font-size: 1.2em;
+        }
+        
+        .back-btn {
+            color: #00d9ff;
+            text-decoration: none;
+            padding: 8px 16px;
+            border: 1px solid #00d9ff;
+            border-radius: 5px;
+        }
+        
+        .video-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        
+        .video-wrapper {
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .video-wrapper img {
+            width: 100%;
+            display: block;
+        }
+        
+        .placeholder {
+            height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            font-size: 1.2em;
+        }
+        
+        .controls {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .control-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 10px;
+            flex: 1;
+            min-width: 250px;
+        }
+        
+        .control-card h3 {
+            color: #00d9ff;
+            margin-bottom: 15px;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #00d9ff;
+            color: #1a1a2e;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .btn:hover {
+            background: #00b8d4;
+        }
+        
+        .btn-danger {
+            background: #ff1744;
+            color: #fff;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+        
+        .status-success {
+            background: rgba(0, 200, 83, 0.2);
+            color: #00c853;
+        }
+        
+        .status-error {
+            background: rgba(255, 23, 68, 0.2);
+            color: #ff1744;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📹 Lab Pi Camera Stream</h1>
+        <a href="/" class="back-btn">← Back to Status</a>
+    </div>
+    
+    <div class="video-container">
+        <div class="video-wrapper">
+            <!-- Placeholder - replace with actual stream URL -->
+            <div class="placeholder">
+                <p>Camera stream will appear here</p>
+                <!-- Example MJPEG stream: -->
+                <!-- <img src="http://localhost:8080/?action=stream" alt="Camera Stream"> -->
+            </div>
+        </div>
+    </div>
+    
+    <div class="controls">
+        <div class="control-card">
+            <h3>💡 Hardware Control</h3>
+            <button class="btn" onclick="togglePower('on')">Power ON</button>
+            <button class="btn btn-danger" onclick="togglePower('off')">Power OFF</button>
+            <div id="power-status"></div>
+        </div>
+        
+        <div class="control-card">
+            <h3>🔧 Device Info</h3>
+            <p>Session: <span id="session-key">Loading...</span></p>
+            <p>Status: <span id="session-status">Active</span></p>
+        </div>
+        
+        <div class="control-card">
+            <h3>📡 Connection</h3>
+            <p>Server: <span id="server-info">Lab Pi</span></p>
+            <button class="btn" onclick="refreshStatus()">Refresh</button>
+        </div>
+    </div>
+    
+    <script>
+        // Load session info
+        async function loadSessionInfo() {
+            try {
+                const response = await fetch('/api/session');
+                const data = await response.json();
+                
+                if (data.active) {
+                    document.getElementById('session-key').textContent = data.session_key || 'N/A';
+                } else {
+                    document.getElementById('session-status').textContent = 'No Active Session';
+                }
+            } catch (e) {
+                console.error('Error loading session:', e);
+            }
+        }
+        
+        // Toggle power
+        async function togglePower(action) {
+            try {
+                const response = await fetch('/api/hardware/power', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({action: action})
+                });
+                const data = await response.json();
+                
+                const statusEl = document.getElementById('power-status');
+                if (response.ok) {
+                    statusEl.className = 'status status-success';
+                    statusEl.textContent = `Power ${action.toUpperCase()} successful`;
+                } else {
+                    statusEl.className = 'status status-error';
+                    statusEl.textContent = data.error || 'Error';
+                }
+            } catch (e) {
+                console.error('Error:', e);
+            }
+        }
+        
+        // Refresh status
+        function refreshStatus() {
+            loadSessionInfo();
+        }
+        
+        // Initial load
+        loadSessionInfo();
+        
+        // Auto-refresh every 5 seconds
+        setInterval(loadSessionInfo, 5000);
+    </script>
+</body>
+</html>

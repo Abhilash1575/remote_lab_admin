@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Booking - Virtual Lab</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            background: #f8f9fa;
+            color: #212529;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 250px;
+            height: 100vh;
+            background: linear-gradient(180deg, #484c7f, #1e203a);
+            color: white;
+            position: fixed;
+            top: 0;
+            left: 0;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .sidebar .logo {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar .logo i {
+            font-size: 48px;
+            color: #00C4FF;
+            margin-bottom: 10px;
+        }
+
+        .sidebar .logo h1 {
+            font-size: 20px;
+            font-weight: 800;
+            margin: 0;
+        }
+
+        .sidebar nav ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .sidebar nav ul li {
+            margin-bottom: 10px;
+        }
+
+        .sidebar nav ul li a {
+            display: block;
+            padding: 12px 15px;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        .sidebar nav ul li a:hover {
+            background: rgba(0, 196, 255, 0.2);
+            padding-left: 20px;
+        }
+
+        .sidebar nav ul li a.active {
+            background: rgba(0, 196, 255, 0.3);
+            border-left: 4px solid #00C4FF;
+        }
+
+        .sidebar nav ul li a i {
+            margin-right: 10px;
+        }
+
+        .main-content {
+            margin-left: 250px;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h2 {
+            margin: 0;
+            color: #484c7f;
+            font-weight: 800;
+        }
+
+        .header .user-info {
+            display: flex;
+            align-items: center;
+        }
+
+        .header .user-info span {
+            font-weight: 600;
+            color: #484c7f;
+        }
+
+        .header .logout-btn {
+            margin-left: 20px;
+            padding: 8px 16px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .header .logout-btn:hover {
+            background: #c82333;
+        }
+
+        .content-section {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .booking-details {
+            display: grid;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .detail-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #00C4FF;
+        }
+
+        .detail-label {
+            font-weight: 700;
+            color: #484c7f;
+            min-width: 150px;
+        }
+
+        .detail-value {
+            color: #6c757d;
+            flex: 1;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-badge.upcoming {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-badge.active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-badge.completed {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status-badge.cancelled {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-badge.expired {
+            background: #f8f9fa;
+            color: #495057;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            padding: 10px 20px;
+            background: #00C4FF;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary:hover {
+            background: #0099CC;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 196, 255, 0.4);
+        }
+
+        .btn-secondary {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .detail-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .detail-label {
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">
+            <i class="fas fa-microchip"></i>
+            <h1>Remote Lab</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('admin_dashboard') }}"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                <li><a href="{{ url_for('manage_users') }}"><i class="fas fa-users"></i> Users</a></li>
+                <li><a href="{{ url_for('manage_experiments') }}"><i class="fas fa-flask"></i> Experiments</a></li>
+                <li><a href="{{ url_for('manage_devices') }}"><i class="fas fa-hdd"></i> Devices</a></li>
+                <li><a href="{{ url_for('manage_bookings') }}" class="active"><i class="fas fa-calendar"></i> Bookings</a></li>
+                <li><a href="{{ url_for('manage_sessions') }}"><i class="fas fa-clock"></i> Sessions</a></li>
+                <li><a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Home</a></li>
+                <li><a href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+            </ul>
+        </nav>
+    </div>
+
+    <div class="main-content">
+        <div class="header">
+            <h2>
+                <i class="fas fa-calendar"></i> View Booking
+            </h2>
+            <div class="user-info">
+                <span>Admin</span>
+                <button class="logout-btn" onclick="window.location.href='{{ url_for('logout') }}'">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+        </div>
+
+        <div class="content-section">
+            <div class="booking-details">
+                <div class="detail-row">
+                    <div class="detail-label">Booking ID</div>
+                    <div class="detail-value">{{ booking.session_key }}</div>
+                </div>
+
+                <div class="detail-row">
+                    <div class="detail-label">User</div>
+                    <div class="detail-value">{{ booking.user.full_name }}</div>
+                </div>
+
+                <div class="detail-row">
+                    <div class="detail-label">Email</div>
+                    <div class="detail-value">{{ booking.user.email }}</div>
+                </div>
+
+                <div class="detail-row">
+                    <div class="detail-label">Experiment</div>
+                    <div class="detail-value">{{ booking.experiment.name }}</div>
+                </div>
+
+                <div class="detail-row">
+                    <div class="detail-label">Start Time</div>
+                    <div class="detail-value">{{ booking.start_time.strftime('%Y-%m-%d %H:%M') }}</div>
+                </div>
+
+                <div class="detail-row">
+                    <div class="detail-label">End Time</div>
+                    <div class="detail-value">{{ booking.end_time.strftime('%Y-%m-%d %H:%M') }}</div>
+                </div>
+
+                <div class="detail-row">
+                    <div class="detail-label">Duration</div>
+                    <div class="detail-value">{{ (booking.end_time - booking.start_time).total_seconds() // 60 }} minutes</div>
+                </div>
+
+                <div class="detail-row">
+                    <div class="detail-label">Status</div>
+                    <div class="detail-value">
+                        <span class="status-badge {{ booking.status.lower() }}">
+                            {{ booking.status }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="detail-row">
+                    <div class="detail-label">Created At</div>
+                    <div class="detail-value">{{ booking.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                </div>
+
+                {% if booking.started_at %}
+                <div class="detail-row">
+                    <div class="detail-label">Started At</div>
+                    <div class="detail-value">{{ booking.started_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                </div>
+                {% endif %}
+
+                {% if booking.completed_at %}
+                <div class="detail-row">
+                    <div class="detail-label">Completed At</div>
+                    <div class="detail-value">{{ booking.completed_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="action-buttons">
+                <a href="{{ url_for('manage_bookings') }}" class="btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to List
+                </a>
+                <button class="btn-primary" onclick="editBooking({{ booking.id }})">
+                    <i class="fas fa-edit"></i> Edit Booking
+                </button>
+                <button class="btn-primary" onclick="deleteBooking({{ booking.id }})">
+                    <i class="fas fa-trash"></i> Delete Booking
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Add active class to current navigation item
+        document.querySelectorAll('.sidebar nav ul li a').forEach(item => {
+            if (item.getAttribute('href') === window.location.pathname) {
+                item.classList.add('active');
+            }
+        });
+
+        function editBooking(bookingId) {
+            alert('Edit booking functionality coming soon');
+        }
+
+        function deleteBooking(bookingId) {
+            if (confirm('Are you sure you want to delete this booking?')) {
+                window.location.href = '/admin/bookings/delete/' + bookingId;
+            }
+        }
+    </script>
+</body>
+</html>

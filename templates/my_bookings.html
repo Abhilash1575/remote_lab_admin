@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Bookings - Virtual Lab</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            background: #f8f9fa;
+            color: #212529;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 20px 0;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+        }
+
+        .logo i {
+            font-size: 36px;
+            color: #00C4FF;
+            margin-right: 15px;
+        }
+
+        .logo h1 {
+            font-size: 24px;
+            color: #484c7f;
+            font-weight: 800;
+        }
+
+        .user-actions {
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn-primary {
+            padding: 10px 20px;
+            background: #00C4FF;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary:hover {
+            background: #0099CC;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 196, 255, 0.4);
+        }
+
+        .btn-secondary {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.4);
+        }
+
+        .content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .content h2 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            color: #484c7f;
+            font-weight: 800;
+        }
+
+        .bookings-grid {
+            display: grid;
+            gap: 20px;
+        }
+
+        .booking-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            border-left: 4px solid #00C4FF;
+            transition: all 0.3s;
+        }
+
+        .booking-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .booking-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .booking-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #484c7f;
+            margin-bottom: 5px;
+        }
+
+        .booking-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .booking-status.upcoming {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .booking-status.active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .booking-status.completed {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .booking-status.cancelled {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .booking-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+            color: #6c757d;
+        }
+
+        .booking-detail {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .booking-detail i {
+            color: #00C4FF;
+        }
+
+        .booking-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-success {
+            padding: 8px 16px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
+        }
+
+        .btn-danger {
+            padding: 8px 16px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.4);
+        }
+
+        .btn-info {
+            padding: 8px 16px;
+            background: #17a2b8;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-info:hover {
+            background: #138496;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(23, 162, 184, 0.4);
+        }
+
+        .no-bookings {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+
+        .no-bookings i {
+            font-size: 64px;
+            color: #00C4FF;
+            margin-bottom: 20px;
+        }
+
+        .no-bookings h3 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: #484c7f;
+        }
+
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+
+        .flash-message {
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .flash-message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .flash-message.danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .flash-message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .user-actions {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .content h2 {
+                font-size: 24px;
+            }
+
+            .booking-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .booking-actions {
+                width: 100%;
+                flex-direction: column;
+            }
+
+            .booking-actions button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <i class="fas fa-microchip"></i>
+                <h1>Remote Lab</h1>
+            </div>
+            <div class="user-actions">
+                <a href="{{ url_for('index') }}" class="btn-primary">
+                    <i class="fas fa-home"></i> Home
+                </a>
+                <a href="{{ url_for('logout') }}" class="btn-secondary">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="flash-messages">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="flash-message {{ category }}">
+                                <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-circle' }}"></i>
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+            </div>
+
+            <h2><i class="fas fa-calendar-check"></i> My Bookings</h2>
+
+            {% if bookings|length > 0 %}
+                <div class="bookings-grid">
+                    {% for booking in bookings %}
+                        <div class="booking-card">
+                            <div class="booking-header">
+                                <div>
+                                    <div class="booking-title">{{ booking.experiment.name }}</div>
+                                    <span class="booking-status {{ booking.status.lower() }}">{{ booking.status }}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="booking-details">
+                                <div class="booking-detail">
+                                    <i class="fas fa-calendar"></i>
+                                    <span>{{ booking.start_time.strftime('%Y-%m-%d') }}</span>
+                                </div>
+                                <div class="booking-detail">
+                                    <i class="fas fa-clock"></i>
+                                    <span>{{ booking.start_time.strftime('%H:%M') }} - {{ booking.end_time.strftime('%H:%M') }}</span>
+                                </div>
+                                <div class="booking-detail">
+                                    <i class="fas fa-hourglass-half"></i>
+                                    <span>{{ booking.duration }} minutes</span>
+                                </div>
+                            </div>
+
+                            <div class="booking-actions">
+                                {% if booking.status == 'UPCOMING' %}
+                                    <a href="{{ url_for('start_booking', booking_id=booking.id) }}" class="btn-success">
+                                        <i class="fas fa-play"></i> Start
+                                    </a>
+                                    <a href="{{ url_for('cancel_booking', booking_id=booking.id) }}" class="btn-danger">
+                                        <i class="fas fa-times"></i> Cancel
+                                    </a>
+                                {% elif booking.status == 'ACTIVE' %}
+                                    <a href="{{ url_for('start_booking', booking_id=booking.id) }}" class="btn-success">
+                                        <i class="fas fa-play"></i> Start Now
+                                    </a>
+                                    <a href="{{ url_for('cancel_booking', booking_id=booking.id) }}" class="btn-danger">
+                                        <i class="fas fa-times"></i> Cancel
+                                    </a>
+                                {% elif booking.status == 'COMPLETED' %}
+                                    <span class="btn-info" style="pointer-events: none; opacity: 0.7;">
+                                        <i class="fas fa-check"></i> Completed
+                                    </span>
+                                {% elif booking.status == 'CANCELLED' %}
+                                    <span class="btn-danger" style="pointer-events: none; opacity: 0.7;">
+                                        <i class="fas fa-ban"></i> Cancelled
+                                    </span>
+                                {% elif booking.status == 'EXPIRED' %}
+                                    <span class="btn-secondary" style="pointer-events: none; opacity: 0.7;">
+                                        <i class="fas fa-clock"></i> Expired
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="no-bookings">
+                    <i class="fas fa-calendar-times"></i>
+                    <h3>No Bookings Found</h3>
+                    <p>You haven't booked any experiments yet. Book your first experiment to get started!</p>
+                    <a href="{{ url_for('index') }}" class="btn-primary" style="margin-top: 20px;">
+                        <i class="fas fa-calendar-plus"></i> Book Now
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        // Auto-update booking statuses
+        function updateBookingStatuses() {
+            const now = new Date();
+            const bookingCards = document.querySelectorAll('.booking-card');
+            
+            bookingCards.forEach(card => {
+                const statusElement = card.querySelector('.booking-status');
+                const status = statusElement.textContent.trim();
+                const dateElement = card.querySelector('.booking-detail .fa-calendar').nextElementSibling;
+                const timeElement = card.querySelector('.booking-detail .fa-clock').nextElementSibling;
+                
+                if (status === 'UPCOMING') {
+                    const [dateStr, timeStr] = [
+                        dateElement.textContent,
+                        timeElement.textContent.split(' - ')[0]
+                    ];
+                    
+                    const bookingTime = new Date(`${dateStr} ${timeStr}`);
+                    const currentTime = new Date();
+                    
+                    if (currentTime >= bookingTime) {
+                        statusElement.textContent = 'ACTIVE';
+                        statusElement.className = 'booking-status active';
+                    }
+                }
+            });
+        }
+
+        // Update statuses every minute
+        setInterval(updateBookingStatuses, 60000);
+
+        // Initial status update
+        updateBookingStatuses();
+    </script>
+</body>
+</html>

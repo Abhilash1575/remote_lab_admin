@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Experiment - Virtual Lab</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            background: #f8f9fa;
+            color: #212529;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 20px 0;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+        }
+
+        .logo i {
+            font-size: 36px;
+            color: #00C4FF;
+            margin-right: 15px;
+        }
+
+        .logo h1 {
+            font-size: 24px;
+            color: #484c7f;
+            font-weight: 800;
+        }
+
+        .user-actions {
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn-primary {
+            padding: 10px 20px;
+            background: #00C4FF;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary:hover {
+            background: #0099CC;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 196, 255, 0.4);
+        }
+
+        .btn-secondary {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.4);
+        }
+
+        .content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .experiment-details {
+            margin-bottom: 40px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #00C4FF;
+        }
+
+        .experiment-details h2 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            color: #484c7f;
+            font-weight: 800;
+        }
+
+        .experiment-details p {
+            color: #6c757d;
+            line-height: 1.6;
+            font-size: 16px;
+        }
+
+        .booking-form {
+            margin-top: 30px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #484c7f;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+            background: #f8f9fa;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #00C4FF;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(0, 196, 255, 0.1);
+        }
+
+        .booking-summary {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .booking-summary h3 {
+            margin-bottom: 15px;
+            color: #484c7f;
+            font-weight: 800;
+        }
+
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            color: #6c757d;
+        }
+
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+
+        .flash-message {
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .flash-message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .flash-message.danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .flash-message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .user-actions {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .experiment-details h2 {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <i class="fas fa-microchip"></i>
+                <h1>Remote Lab</h1>
+            </div>
+            <div class="user-actions">
+                <a href="{{ url_for('my_bookings') }}" class="btn-secondary">
+                    <i class="fas fa-calendar-check"></i> My Bookings
+                </a>
+                <a href="{{ url_for('index') }}" class="btn-primary">
+                    <i class="fas fa-home"></i> Home
+                </a>
+                <a href="{{ url_for('logout') }}" class="btn-secondary">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="flash-messages">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="flash-message {{ category }}">
+                                <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-circle' }}"></i>
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+            </div>
+
+            <div class="experiment-details">
+                <h2>{{ experiment.name }}</h2>
+                <p>{{ experiment.description }}</p>
+                <div style="margin-top: 15px; color: #6c757d;">
+                    <i class="fas fa-clock"></i> Maximum Duration: {{ experiment.max_duration }} minutes
+                    {% if experiment.price > 0 %}
+                        <span style="margin-left: 20px;"><i class="fas fa-rupee-sign"></i> Price: {{ experiment.price }}</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <form method="POST" class="booking-form">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="slotDate">Select Date</label>
+                        <input type="date" id="slotDate" name="slotDate" required min="{{ today }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="slotTime">Select Time</label>
+                        <input type="time" id="slotTime" name="slotTime" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="duration">Duration (minutes)</label>
+                        <select id="duration" name="duration" required>
+                            <option value="2">2 minutes</option>
+                            {% for i in range(15, experiment.max_duration + 1, 15) %}
+                                <option value="{{ i }}">{{ i }} minutes</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="booking-summary">
+                    <h3>Booking Summary</h3>
+                    <div class="summary-item">
+                        <span>Experiment</span>
+                        <span>{{ experiment.name }}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span>Date</span>
+                        <span id="summaryDate">Not selected</span>
+                    </div>
+                    <div class="summary-item">
+                        <span>Time</span>
+                        <span id="summaryTime">Not selected</span>
+                    </div>
+                    <div class="summary-item">
+                        <span>Duration</span>
+                        <span id="summaryDuration">Not selected</span>
+                    </div>
+                    {% if experiment.price > 0 %}
+                        <div class="summary-item">
+                            <span>Total Price</span>
+                            <span id="summaryPrice">₹0</span>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <button type="submit" class="btn-primary" style="width: 100%; padding: 14px; margin-top: 20px; font-size: 16px;">
+                    <i class="fas fa-calendar-plus"></i> Book Experiment
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Get today's date for min date attribute
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('slotDate').setAttribute('min', today);
+
+        // Update summary when date, time, or duration changes
+        document.getElementById('slotDate').addEventListener('change', updateSummary);
+        document.getElementById('slotTime').addEventListener('change', updateSummary);
+        document.getElementById('duration').addEventListener('change', updateSummary);
+
+        function updateSummary() {
+            const date = document.getElementById('slotDate').value;
+            const time = document.getElementById('slotTime').value;
+            const duration = document.getElementById('duration').value;
+            const price = {{ experiment.price }};
+
+            document.getElementById('summaryDate').textContent = date || 'Not selected';
+            document.getElementById('summaryTime').textContent = time || 'Not selected';
+            document.getElementById('summaryDuration').textContent = duration ? duration + ' minutes' : 'Not selected';
+
+            {% if experiment.price > 0 %}
+                const totalPrice = price * (duration / 60);
+                document.getElementById('summaryPrice').textContent = '₹' + totalPrice.toFixed(2);
+            {% endif %}
+        }
+
+        // Auto-update time options based on availability (placeholder for real availability check)
+        function updateTimeOptions() {
+            // This would check real availability from the server
+            // For now, we'll just enable all times
+        }
+
+        // Initial summary update
+        updateSummary();
+    </script>
+</body>
+</html>

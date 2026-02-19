@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Experiments - Virtual Lab</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            background: #f8f9fa;
+            color: #212529;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 250px;
+            height: 100vh;
+            background: linear-gradient(180deg, #484c7f, #1e203a);
+            color: white;
+            position: fixed;
+            top: 0;
+            left: 0;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .sidebar .logo {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar .logo i {
+            font-size: 48px;
+            color: #00C4FF;
+            margin-bottom: 10px;
+        }
+
+        .sidebar .logo h1 {
+            font-size: 20px;
+            font-weight: 800;
+            margin: 0;
+        }
+
+        .sidebar nav ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .sidebar nav ul li {
+            margin-bottom: 10px;
+        }
+
+        .sidebar nav ul li a {
+            display: block;
+            padding: 12px 15px;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        .sidebar nav ul li a:hover {
+            background: rgba(0, 196, 255, 0.2);
+            padding-left: 20px;
+        }
+
+        .sidebar nav ul li a.active {
+            background: rgba(0, 196, 255, 0.3);
+            border-left: 4px solid #00C4FF;
+        }
+
+        .sidebar nav ul li a i {
+            margin-right: 10px;
+        }
+
+        .main-content {
+            margin-left: 250px;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h2 {
+            margin: 0;
+            color: #484c7f;
+            font-weight: 800;
+        }
+
+        .header .user-info {
+            display: flex;
+            align-items: center;
+        }
+
+        .header .user-info span {
+            font-weight: 600;
+            color: #484c7f;
+        }
+
+        .header .logout-btn {
+            margin-left: 20px;
+            padding: 8px 16px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .header .logout-btn:hover {
+            background: #c82333;
+        }
+
+        .content-section {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .section-header h3 {
+            margin: 0;
+            color: #484c7f;
+            font-weight: 800;
+        }
+
+        .btn-primary {
+            padding: 8px 16px;
+            background: #00C4FF;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary:hover {
+            background: #0099CC;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 700;
+            color: #484c7f;
+            position: sticky;
+            top: 0;
+        }
+
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-badge.active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-badge.inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 12px;
+            border-radius: 4px;
+            text-decoration: none;
+            display: inline-block;
+            cursor: pointer;
+        }
+
+        .btn-view {
+            background: #00C4FF;
+            color: white;
+        }
+
+        .btn-edit {
+            background: #f39c12;
+            color: white;
+        }
+
+        .btn-delete {
+            background: #dc3545;
+            color: white;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from {opacity: 0;}
+            to {opacity: 1;}
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 30px;
+            border: 1px solid #888;
+            width: 90%;
+            max-width: 500px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: #484c7f;
+            font-weight: 800;
+        }
+
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #484c7f;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+            background: #f8f9fa;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #00C4FF;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(0, 196, 255, 0.1);
+        }
+
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+
+        .flash-message {
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .flash-message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .flash-message.danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">
+            <i class="fas fa-microchip"></i>
+            <h1>Remote Lab</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('admin_dashboard') }}"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                <li><a href="{{ url_for('manage_users') }}"><i class="fas fa-users"></i> Users</a></li>
+                <li><a href="{{ url_for('manage_experiments') }}" class="active"><i class="fas fa-flask"></i> Experiments</a></li>
+                <li><a href="{{ url_for('manage_devices') }}"><i class="fas fa-hdd"></i> Devices</a></li>
+                <li><a href="{{ url_for('manage_bookings') }}"><i class="fas fa-calendar"></i> Bookings</a></li>
+                <li><a href="{{ url_for('manage_sessions') }}"><i class="fas fa-clock"></i> Sessions</a></li>
+                <li><a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Home</a></li>
+                <li><a href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+            </ul>
+        </nav>
+    </div>
+
+    <div class="main-content">
+        <div class="header">
+            <h2>
+                <i class="fas fa-flask"></i> Manage Experiments
+            </h2>
+            <div class="user-info">
+                <span>Admin</span>
+                <button class="logout-btn" onclick="window.location.href='{{ url_for('logout') }}'">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+        </div>
+
+        <div class="flash-messages">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-message {{ category }}">
+                            <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-circle' }}"></i>
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+
+        <div class="content-section">
+            <div class="section-header">
+                <h3>Experiments</h3>
+                <button class="btn-primary" onclick="openAddModal()">
+                    <i class="fas fa-plus"></i> Add Experiment
+                </button>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>Max Duration (min)</th>
+                            <th>Price</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for exp in experiments %}
+                        <tr>
+                            <td>{{ exp.name }}</td>
+                            <td>{{ exp.description[:100] }}{% if exp.description|length > 100 %}...{% endif %}</td>
+                            <td>{{ exp.max_duration }}</td>
+                            <td>{{ exp.price }}</td>
+                            <td>
+                                <span class="status-badge {{ 'active' if exp.active else 'inactive' }}">
+                                    {{ 'Active' if exp.active else 'Inactive' }}
+                                </span>
+                            </td>
+                            <td class="action-buttons">
+                                <button class="btn-sm btn-view" onclick="viewExperiment({{ exp.id }})">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
+                                <button class="btn-sm btn-edit" onclick="editExperiment({{ exp.id }})">
+                                    <i class="fas fa-edit"></i> Edit
+                                </button>
+                                <button class="btn-sm btn-delete" onclick="deleteExperiment({{ exp.id }})">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Experiment Modal -->
+    <div id="addExperimentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-plus"></i> Add Experiment</h3>
+                <span class="close" onclick="closeAddModal()">&times;</span>
+            </div>
+            <form method="POST" action="{{ url_for('manage_experiments') }}">
+                <div class="form-group">
+                    <label for="name">Name</label>
+                    <input type="text" id="name" name="name" required placeholder="e.g., Temperature and Humidity">
+                </div>
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <textarea id="description" name="description" required placeholder="Describe the experiment..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="max_duration">Max Duration (minutes)</label>
+                    <input type="number" id="max_duration" name="max_duration" required placeholder="60" min="1" max="180">
+                </div>
+                <div class="form-group">
+                    <label for="price">Price (₹)</label>
+                    <input type="number" id="price" name="price" placeholder="0" step="0.01" min="0">
+                </div>
+                <button type="submit" class="btn-primary">
+                    <i class="fas fa-save"></i> Save Experiment
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Add active class to current navigation item
+        document.querySelectorAll('.sidebar nav ul li a').forEach(item => {
+            if (item.getAttribute('href') === window.location.pathname) {
+                item.classList.add('active');
+            }
+        });
+
+        // Add Experiment Modal Functions
+        function openAddModal() {
+            document.getElementById('addExperimentModal').style.display = 'block';
+        }
+
+        function closeAddModal() {
+            document.getElementById('addExperimentModal').style.display = 'none';
+        }
+
+        // Edit Experiment Function
+        function editExperiment(expId) {
+            alert('Edit experiment functionality coming soon');
+        }
+
+        // View Experiment Function
+        function viewExperiment(expId) {
+            alert('View experiment functionality coming soon');
+        }
+
+        // Delete Experiment Function
+        function deleteExperiment(expId) {
+            if (confirm('Are you sure you want to delete this experiment?')) {
+                window.location.href = '/admin/experiments/delete/' + expId;
+            }
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('addExperimentModal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
+    </script>
+</body>
+</html>

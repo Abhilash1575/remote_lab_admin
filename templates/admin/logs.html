@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logs & Monitoring - Virtual Lab</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            background: #f8f9fa;
+            color: #212529;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 250px;
+            height: 100vh;
+            background: linear-gradient(180deg, #484c7f, #1e203a);
+            color: white;
+            position: fixed;
+            top: 0;
+            left: 0;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .sidebar .logo {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar .logo i {
+            font-size: 48px;
+            color: #00C4FF;
+            margin-bottom: 10px;
+        }
+
+        .sidebar .logo h1 {
+            font-size: 20px;
+            font-weight: 800;
+            margin: 0;
+        }
+
+        .sidebar nav ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .sidebar nav ul li {
+            margin-bottom: 10px;
+        }
+
+        .sidebar nav ul li a {
+            display: block;
+            padding: 12px 15px;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        .sidebar nav ul li a:hover {
+            background: rgba(0, 196, 255, 0.2);
+            padding-left: 20px;
+        }
+
+        .sidebar nav ul li a.active {
+            background: rgba(0, 196, 255, 0.3);
+            border-left: 4px solid #00C4FF;
+        }
+
+        .sidebar nav ul li a i {
+            margin-right: 10px;
+        }
+
+        .main-content {
+            margin-left: 250px;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h2 {
+            margin: 0;
+            color: #484c7f;
+            font-weight: 800;
+        }
+
+        .header .user-info {
+            display: flex;
+            align-items: center;
+        }
+
+        .header .user-info span {
+            font-weight: 600;
+            color: #484c7f;
+        }
+
+        .header .logout-btn {
+            margin-left: 20px;
+            padding: 8px 16px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .header .logout-btn:hover {
+            background: #c82333;
+        }
+
+        .content-section {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .section-header h3 {
+            margin: 0;
+            color: #484c7f;
+            font-weight: 800;
+        }
+
+        .btn-primary {
+            padding: 8px 16px;
+            background: #00C4FF;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary:hover {
+            background: #0099CC;
+        }
+
+        .filter-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            min-width: 150px;
+        }
+
+        .filter-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+
+        .filter-group select,
+        .filter-group input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            background: white;
+        }
+
+        .btn-filter {
+            padding: 8px 16px;
+            background: #00C4FF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-filter:hover {
+            background: #0099CC;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 700;
+            color: #484c7f;
+            position: sticky;
+            top: 0;
+        }
+
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .level-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .level-badge.DEBUG {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .level-badge.INFO {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .level-badge.WARNING {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .level-badge.ERROR {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .level-badge.CRITICAL {
+            background: #f5c6cb;
+            color: #721c24;
+        }
+
+        .category-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .category-badge.SYSTEM {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+
+        .category-badge.EXPERIMENT {
+            background: #f3e5f5;
+            color: #6a1b9a;
+        }
+
+        .category-badge.ERROR {
+            background: #ffebee;
+            color: #b71c1c;
+        }
+
+        .category-badge.SSH {
+            background: #fff3e0;
+            color: #ef6c00;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 12px;
+            border-radius: 4px;
+            text-decoration: none;
+            display: inline-block;
+            cursor: pointer;
+        }
+
+        .btn-download {
+            background: #2ecc71;
+            color: white;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .filter-section {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">
+            <i class="fas fa-microchip"></i>
+            <h1>Remote Lab</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('admin_dashboard') }}"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                <li><a href="{{ url_for('manage_users') }}"><i class="fas fa-users"></i> Users</a></li>
+                <li><a href="{{ url_for('manage_experiments') }}"><i class="fas fa-flask"></i> Experiments</a></li>
+                <li><a href="{{ url_for('manage_devices') }}"><i class="fas fa-hdd"></i> Devices</a></li>
+                <li><a href="{{ url_for('manage_bookings') }}"><i class="fas fa-calendar"></i> Bookings</a></li>
+                <li><a href="{{ url_for('manage_sessions') }}"><i class="fas fa-clock"></i> Sessions</a></li>
+                <li><a href="{{ url_for('manage_logs') }}" class="active"><i class="fas fa-file-alt"></i> Logs & Monitoring</a></li>
+                <li><a href="{{ url_for('view_analytics') }}"><i class="fas fa-chart-line"></i> Analytics</a></li>
+                <li><a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Home</a></li>
+                <li><a href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+            </ul>
+        </nav>
+    </div>
+
+    <div class="main-content">
+        <div class="header">
+            <h2>
+                <i class="fas fa-file-alt"></i> Logs & Monitoring
+            </h2>
+            <div class="user-info">
+                <span>Admin</span>
+                <button class="logout-btn" onclick="window.location.href='{{ url_for('logout') }}'">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+        </div>
+
+        <div class="content-section">
+            <div class="section-header">
+                <h3>System Logs</h3>
+                <a href="{{ url_for('download_logs') }}" class="btn-primary">
+                    <i class="fas fa-download"></i> Download Logs
+                </a>
+            </div>
+
+            <div class="filter-section">
+                <div class="filter-group">
+                    <label>Level</label>
+                    <select id="levelFilter" onchange="applyFilters()">
+                        <option value="ALL" {% if selected_level == 'ALL' %}selected{% endif %}>All Levels</option>
+                        <option value="DEBUG" {% if selected_level == 'DEBUG' %}selected{% endif %}>Debug</option>
+                        <option value="INFO" {% if selected_level == 'INFO' %}selected{% endif %}>Info</option>
+                        <option value="WARNING" {% if selected_level == 'WARNING' %}selected{% endif %}>Warning</option>
+                        <option value="ERROR" {% if selected_level == 'ERROR' %}selected{% endif %}>Error</option>
+                        <option value="CRITICAL" {% if selected_level == 'CRITICAL' %}selected{% endif %}>Critical</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Category</label>
+                    <select id="categoryFilter" onchange="applyFilters()">
+                        <option value="ALL" {% if selected_category == 'ALL' %}selected{% endif %}>All Categories</option>
+                        <option value="SYSTEM" {% if selected_category == 'SYSTEM' %}selected{% endif %}>System</option>
+                        <option value="EXPERIMENT" {% if selected_category == 'EXPERIMENT' %}selected{% endif %}>Experiment</option>
+                        <option value="ERROR" {% if selected_category == 'ERROR' %}selected{% endif %}>Error</option>
+                        <option value="SSH" {% if selected_category == 'SSH' %}selected{% endif %}>SSH</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Device</label>
+                    <select id="deviceFilter" onchange="applyFilters()">
+                        <option value="">All Devices</option>
+                        {% for device in devices %}
+                        <option value="{{ device.id }}" {% if selected_device == device.id|string %}selected{% endif %}>{{ device.device_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>User</label>
+                    <select id="userFilter" onchange="applyFilters()">
+                        <option value="">All Users</option>
+                        {% for user in users %}
+                        <option value="{{ user.id }}" {% if selected_user == user.id|string %}selected{% endif %}>{{ user.full_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Level</th>
+                            <th>Category</th>
+                            <th>Device</th>
+                            <th>User</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in logs %}
+                        <tr>
+                            <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td><span class="level-badge {{ log.level }}">{{ log.level }}</span></td>
+                            <td><span class="category-badge {{ log.category }}">{{ log.category }}</span></td>
+                            <td>{{ log.device.device_name if log.device else '-' }}</td>
+                            <td>{{ log.user.full_name if log.user else '-' }}</td>
+                            <td>{{ log.message }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Add active class to current navigation item
+        document.querySelectorAll('.sidebar nav ul li a').forEach(item => {
+            if (item.getAttribute('href') === window.location.pathname) {
+                item.classList.add('active');
+            }
+        });
+
+        function applyFilters() {
+            const level = document.getElementById('levelFilter').value;
+            const category = document.getElementById('categoryFilter').value;
+            const device = document.getElementById('deviceFilter').value;
+            const user = document.getElementById('userFilter').value;
+            
+            let url = '/admin/logs?';
+            if (level !== 'ALL') url += `level=${level}&`;
+            if (category !== 'ALL') url += `category=${category}&`;
+            if (device) url += `device_id=${device}&`;
+            if (user) url += `user_id=${user}&`;
+            
+            window.location.href = url.slice(0, -1);
+        }
+
+        // Auto-refresh data every 60 seconds
+        setInterval(function() {
+            window.location.reload();
+        }, 60000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab Pi - {{ lab_pi_name }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            text-align: center;
+            padding: 30px 0;
+            border-bottom: 2px solid #0f3460;
+        }
+        
+        h1 {
+            font-size: 2em;
+            color: #00d9ff;
+            margin-bottom: 10px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.9em;
+        }
+        
+        .status-online {
+            background: #00c853;
+            color: #fff;
+        }
+        
+        .status-offline {
+            background: #ff1744;
+            color: #fff;
+        }
+        
+        .status-registering {
+            background: #ff9100;
+            color: #fff;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 25px;
+            margin: 20px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .card h2 {
+            color: #00d9ff;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .info-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+        }
+        
+        .info-label {
+            font-size: 0.85em;
+            color: #888;
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            font-size: 1.1em;
+            color: #fff;
+        }
+        
+        .session-info {
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .session-active {
+            background: rgba(0, 200, 83, 0.2);
+            border: 2px solid #00c853;
+            border-radius: 10px;
+        }
+        
+        .session-inactive {
+            background: rgba(255, 23, 68, 0.2);
+            border: 2px solid #ff1744;
+            border-radius: 10px;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #00d9ff;
+            color: #1a1a2e;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        
+        .btn:hover {
+            background: #00b8d4;
+            transform: translateY(-2px);
+        }
+        
+        .btn-success {
+            background: #00c853;
+        }
+        
+        .btn-danger {
+            background: #ff1744;
+        }
+        
+        .heartbeat-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .hardware-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .hardware-icon {
+            font-size: 2em;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔧 Lab Pi Control Panel</h1>
+            <p>{{ lab_pi_name }}</p>
+            <br>
+            {% if registered %}
+                <span class="status-badge status-online">
+                    <span class="heartbeat-indicator" style="background: #00c853;"></span>
+                    Connected to Master
+                </span>
+            {% else %}
+                <span class="status-badge status-registering">
+                    Connecting to Master...
+                </span>
+            {% endif %}
+        </header>
+        
+        <div class="card">
+            <h2>📋 Lab Pi Information</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Lab Pi ID</div>
+                    <div class="info-value">{{ lab_pi_id }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Master URL</div>
+                    <div class="info-value">{{ master_url }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Registration Status</div>
+                    <div class="info-value">
+                        {% if registered %}✓ Registered{% else %}✗ Not Registered{% endif %}
+                    </div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Session Status</div>
+                    <div class="info-value">
+                        {% if session_active %}Active{% else %}Inactive{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>⚡ Hardware Status</h2>
+            <div class="hardware-status">
+                <div class="hardware-icon">
+                    {% if relay_state %}💡{% else %}💡{% endif %}
+                </div>
+                <div>
+                    <div class="info-label">Power Relay</div>
+                    <div class="info-value">
+                        {% if relay_state %}ON{% else %}OFF{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>🎯 Current Session</h2>
+            {% if session_active %}
+                <div class="session-info session-active">
+                    <p>Session is ACTIVE</p>
+                    <a href="/camera" class="btn">📹 View Camera</a>
+                </div>
+            {% else %}
+                <div class="session-info session-inactive">
+                    <p>No active session</p>
+                    <p style="color: #888; margin-top: 10px;">Waiting for booking from Master Pi...</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="card">
+            <h2>🔗 Quick Links</h2>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <a href="/api/status" class="btn" target="_blank">API Status</a>
+                <a href="/api/session" class="btn" target="_blank">API Session</a>
+            </div>
+        </div>
+        
+        <footer>
+            <p>Virtual Lab - Lab Pi Node</p>
+            <p>Connected to: {{ master_url }}</p>
+        </footer>
+    </div>
+    
+    <script>
+        // Auto-refresh status every 10 seconds
+        setInterval(async () => {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                // Update UI with new data
+                console.log('Status update:', data);
+            } catch (e) {
+                console.error('Status fetch error:', e);
+            }
+        }, 10000);
+    </script>
+</body>
+</html>

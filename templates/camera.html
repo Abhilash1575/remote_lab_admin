@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Live Video Feed - Embedded Virtual Lab</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+html, body { height: 100%; margin: 0; font-family: 'Inter', sans-serif; background: #1c1c2b; color: #e0e0e0; overflow: hidden; }
+.fullscreen-video { width: 100vw; height: 100vh; object-fit: cover; border: none; }
+.controls { position: absolute; top: 20px; right: 20px; display: flex; gap: 10px; z-index: 10; }
+.button { padding: 10px 15px; border-radius: 6px; border: none; cursor: pointer; background: #00f0ff; color: #041726; font-weight: 700; }
+</style>
+</head>
+<body>
+<img id="videoFeed" class="fullscreen-video" alt="camera">
+<audio id="audioFeed" autoplay></audio>
+<div class="controls">
+    <button id="backBtn" class="button">Back to Main</button>
+</div>
+
+<script>
+document.getElementById('backBtn').addEventListener('click', () => {
+    window.close();
+});
+
+// Dynamic host configuration - automatically detects IP and ports
+const BASE_URL = window.location.origin;  // e.g., http://192.168.1.100:5000
+const VIDEO_PORT = 8080;  // Camera stream port - change if different
+const AUDIO_PORT = 9000;  // Audio server port - change if different
+
+// Video stream URL - uses same host as current page but different port for camera
+const videoUrl = `${window.location.protocol}//${window.location.hostname}:${VIDEO_PORT}/?action=stream&resolution=1920x1080&quality=100`;
+
+// Audio server URL - uses same host but audio port
+const audioServerUrl = `${window.location.protocol}//${window.location.hostname}:${AUDIO_PORT}`;
+
+console.log('Video URL:', videoUrl);
+console.log('Audio server URL:', audioServerUrl);
+
+// Set video feed dynamically
+document.getElementById('videoFeed').src = videoUrl;
+
+// Audio setup (similar to main page)
+let audioPC = null;
+let audioStarting = false;
+
+async function startAudio() {
+    if (audioPC || audioStarting) return;
+    audioStarting = true;
+
+    try {
+        audioPC = new RTCPeerConnection();
+
+        audioPC.ontrack = (event) => {
+            document.getElementById('audioFeed').srcObject = event.streams[0];
+        };
+
+        audioPC.oniceconnectionstatechange = () => {
+            if (audioPC.iceConnectionState === 'failed' || audioPC.iceConnectionState === 'closed') {
+                stopAudio();
+            }
+        };
+
+        audioPC.addTransceiver('audio', { direction: 'recvonly' });
+
+        const offer = await audioPC.createOffer();
+        await audioPC.setLocalDescription(offer);
+
+        // Use dynamic audio server URL
+        const response = await fetch(`${audioServerUrl}/offer`, {
+            method: 'POST',
+            body: JSON.stringify({
+                sdp: audioPC.localDescription.sdp,
+                type: audioPC.localDescription.type
+            }),
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const answer = await response.json();
+        await audioPC.setRemoteDescription(answer);
+
+        audioStarting = false;
+    } catch (error) {
+        console.error('Failed to start audio:', error);
+        stopAudio();
+        audioStarting = false;
+    }
+}
+
+function stopAudio() {
+    if (audioPC) {
+        audioPC.close();
+        audioPC = null;
+    }
+    document.getElementById('audioFeed').srcObject = null;
+}
+
+// Auto-start audio on load
+startAudio();
+</script>
+</body>
+</html>

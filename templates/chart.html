@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Real-time Sensor Data Chart - Embedded Virtual Lab</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<style>
+html, body { height: 100%; margin: 0; font-family: 'Inter', sans-serif; background: #1c1c2b; color: #e0e0e0; overflow: hidden; }
+.fullscreen-chart { width: 100vw; height: calc(100vh - 170px); margin-top: 20px; }
+.controls { position: absolute; top: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 10; align-items: flex-end; }
+.control-group { display: flex; gap: 10px; align-items: center; }
+.button { padding: 10px 15px; border-radius: 6px; border: none; cursor: pointer; background: #00f0ff; color: #041726; font-weight: 700; }
+.input { padding: 5px; border-radius: 4px; border: 1px solid #333; background: #222; color: #e0e0e0; }
+</style>
+</head>
+<body>
+<div style="display:flex; gap:12px; align-items:center; margin-bottom:8px; flex-wrap:wrap; padding: 10px;">
+    <label>Scaling: <button id="scalingToggle" class="button">Auto</button></label>
+    <label style="display:flex;gap:6px;align-items:center">X-Axis
+        <select id="xAxisFilter" class="input" style="width:140px;margin-left:6px">
+            <option value="time">Time (s)</option><option value="samples">Samples</option>
+        </select>
+    </label>
+    <div id="manualControls" style="display:none; gap:8px; display:flex; align-items:center;">
+        <label>Y1 Max: <input type="number" id="y1Max" class="input" value="100" min="0" step="10"></label>
+        <button id="y1Plus" class="button">+</button>
+        <button id="y1Minus" class="button">-</button>
+        <label>Y2 Max: <input type="number" id="y2Max" class="input" value="100" min="0" step="10"></label>
+        <button id="y2Plus" class="button">+</button>
+        <button id="y2Minus" class="button">-</button>
+    </div>
+    <button id="pauseChart" class="button">Pause Chart</button>
+    <button id="exportCSV" style="background:#444;color:#fff;border-radius:6px;padding:8px 10px">Export CSV</button>
+    <button id="backBtn" class="button">Back to Main</button>
+</div>
+
+<canvas id="mainChart" class="fullscreen-chart"></canvas>
+
+<script>
+document.getElementById('backBtn').addEventListener('click', () => {
+    window.close();
+});
+
+const socket = io.connect(window.location.origin, { transports: ['websocket', 'polling'] });
+const xAxisFilter = document.getElementById('xAxisFilter');
+
+xAxisFilter.addEventListener('change', () => {
+  chart.options.scales.x.title.text = xAxisFilter.value === 'time' ? 'Time (s)' : 'Samples';
+  chart.update();
+});
+
+const chartCtx = document.getElementById('mainChart').getContext('2d');
+const visiblePoints = 200; // More points for fullscreen
+const chartBuffer = [];
+let running = true;
+let sampleCount = 0;
+let lastSelectedKey1 = '';
+
+const chart = new Chart(chartCtx, {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'Series 1', data: [], borderColor: '#00f0ff', borderWidth: 2, pointRadius: 0, fill: false, yAxisID: 'y' },
+    { label: 'Series 2', data: [], borderColor: '#00ff7f', borderWidth: 2, pointRadius: 0, fill: false, yAxisID: 'y1', hidden: true }
+  ]},
+  options: {
+    animation: false, responsive: true, maintainAspectRatio: false,
+    layout: { padding: { left: 10, right: 10, top: 10, bottom: 60 } },
+    scales: {
+      x: { display: true, grid: { color: '#222' }, title: { display:true, text: 'Time (s)', color: '#e0e0e0' }, ticks: { color: '#e0e0e0' } },
+      y: { display: true, position: 'left', grid: { color: '#333' }, title: { display:true, text: 'Series 1', color: '#e0e0e0' }, beginAtZero: true, min: 0, ticks: { beginAtZero: true, color: '#e0e0e0', font: { size: 12 } } },
+      y1: { display: true, position: 'right', grid: { drawOnChartArea: false }, title: { display:true, text: 'Series 2 (Disabled)', color: '#e0e0e0' }, beginAtZero: true, min: 0, ticks: { beginAtZero: true, color: '#e0e0e0', font: { size: 12 } } }
+    },
+    plugins: {
+      legend: { display: true, labels: { color: '#e0e0e0' } },
+      zoom: {
+        pan: { enabled: true, mode: 'xy' },
+        zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }
+      }
+    }
+  }
+});
+
+function chartLoop(){
+  if(!running){ requestAnimationFrame(chartLoop); return; }
+  const take = chartBuffer.splice(0, 10);
+  if(take.length){
+    take.forEach(v => {
+      if (xAxisFilter.value === 'time') {
+        chart.data.labels.push(new Date(v.ts).toLocaleTimeString('en-GB', { hour12: false }));
+      } else {
+        chart.data.labels.push(v.sampleCount);
+      }
+      chart.data.datasets[0].data.push(v.value1 !== null ? v.value1 : NaN);
+      chart.data.datasets[1].data.push(v.value2 !== null ? v.value2 : NaN);
+    });
+    while(chart.data.labels.length > visiblePoints){
+      chart.data.labels.shift(); chart.data.datasets[0].data.shift(); chart.data.datasets[1].data.shift();
+    }
+    chart.update('none');
+  }
+  requestAnimationFrame(chartLoop);
+}
+requestAnimationFrame(chartLoop);
+
+let knownSensorKeys = new Set();
+let isAutoScaling = true;
+
+function updateScaling() {
+  if (isAutoScaling) {
+    delete chart.options.scales.y.max;
+    delete chart.options.scales.y1.max;
+  } else {
+    chart.options.scales.y.max = Number(document.getElementById('y1Max').value);
+    chart.options.scales.y1.max = Number(document.getElementById('y2Max').value);
+  }
+  chart.update();
+}
+
+document.getElementById('scalingToggle').addEventListener('click', () => {
+  isAutoScaling = !isAutoScaling;
+  document.getElementById('scalingToggle').textContent = isAutoScaling ? 'Auto' : 'Manual';
+  document.getElementById('manualControls').style.display = isAutoScaling ? 'none' : 'block';
+  updateScaling();
+});
+
+document.getElementById('y1Max').addEventListener('input', updateScaling);
+document.getElementById('y2Max').addEventListener('input', updateScaling);
+
+document.getElementById('y1Plus').addEventListener('click', () => {
+  const input = document.getElementById('y1Max');
+  input.value = Number(input.value) + 10;
+  updateScaling();
+});
+
+document.getElementById('y1Minus').addEventListener('click', () => {
+  const input = document.getElementById('y1Max');
+  input.value = Math.max(0, Number(input.value) - 10);
+  updateScaling();
+});
+
+document.getElementById('y2Plus').addEventListener('click', () => {
+  const input = document.getElementById('y2Max');
+  input.value = Number(input.value) + 10;
+  updateScaling();
+});
+
+document.getElementById('y2Minus').addEventListener('click', () => {
+  const input = document.getElementById('y2Max');
+  input.value = Math.max(0, Number(input.value) - 10);
+  updateScaling();
+});
+
+document.getElementById('pauseChart').addEventListener('click', () => {
+  running = !running;
+  document.getElementById('pauseChart').innerText = running ? 'Pause Chart' : 'Resume Chart';
+});
+
+document.getElementById('exportCSV').addEventListener('click', () => {
+  const labels = chart.data.labels;
+  const d1 = chart.data.datasets[0].data;
+  const d2 = chart.data.datasets[1].data;
+
+  // Use actual variable names for header
+  const header1 = chart.data.datasets[0].label || 'Signal1';
+  const header2 = chart.data.datasets[1].label || 'Signal2';
+  let csv = `Time,${header1},${header2}\n`;
+
+  for(let i=0; i<labels.length; i++){
+    csv += `"${labels[i]}",${isNaN(d1[i]) ? '' : d1[i]},${isNaN(d2[i]) ? '' : d2[i]}\n`;
+  }
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'chart_export.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+socket.on('sensor_data', (payload) => {
+  if (!payload) return;
+  sampleCount++;
+
+  const numericKeys = Object.keys(payload).filter(k =>
+    payload[k] !== null && payload[k] !== undefined &&
+    !isNaN(Number(payload[k]))
+  ).map(k => k.toLowerCase());
+
+  numericKeys.forEach(k => {
+    if(!knownSensorKeys.has(k)) knownSensorKeys.add(k);
+  });
+
+  // Auto-select first two keys if available
+  const keysArray = Array.from(knownSensorKeys);
+  if (chart.data.datasets[0].label === 'Series 1' && keysArray.length > 0) {
+    chart.data.datasets[0].label = keysArray[0];
+    chart.options.scales.y.title.text = keysArray[0];
+  }
+  if (chart.data.datasets[1].label === 'Series 2' && keysArray.length > 1) {
+    chart.data.datasets[1].label = keysArray[1];
+    chart.data.datasets[1].hidden = false;
+    chart.options.scales.y1.display = true;
+    chart.options.scales.y1.title.text = keysArray[1];
+  }
+
+  const key1 = keysArray[0];
+  const key2 = keysArray[1];
+  const val1 = key1 && payload[key1] !== undefined ? Number(payload[key1]) :
+               key1 && payload[key1.toLowerCase()] !== undefined ? Number(payload[key1.toLowerCase()]) : null;
+  const val2 = key2 && payload[key2] !== undefined ? Number(payload[key2]) :
+               key2 && payload[key2.toLowerCase()] !== undefined ? Number(payload[key2.toLowerCase()]) : null;
+
+  if (val1 !== null || val2 !== null) {
+    chartBuffer.push({
+      ts: Date.now(),
+      sampleCount,
+      value1: val1,
+      value2: val2
+    });
+  }
+});
+</script>
+</body>
+</html>

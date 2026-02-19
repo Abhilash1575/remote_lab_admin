@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title id="pageTitle">Embedded Virtual Lab - Session Active</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<style>
+/* (kept your original styles with small fixes) */
+html,body{height:100%;margin:0;font-family:'Inter',sans-serif;background:#1c1c2b;color:#e0e0e0;overflow:hidden}
+.header-bar{background:#0b2545;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;height:44px}
+.header-bar h1{margin:0;font-size:16px}
+#timer{background:#e67e22;color:#1c1c2b;padding:6px 12px;border-radius:6px;font-weight:700}
+.container{display:flex;height:calc(100vh - 44px);gap:12px;padding:12px;box-sizing:border-box}
+.left-column{width:360px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;overflow-x:hidden;padding-right:6px} /* prevent horizontal scroll */
+.right-column{flex:1;display:flex;flex-direction:column;gap:12px;overflow:auto}
+.card{background:#252538;padding:14px;border-radius:10px;border:1px solid #3d3d52;box-shadow:0 0 10px rgba(0,0,0,0.4);position:relative}
+.section-title, .card h3{color:#00f0ff;margin:0 0 8px 0;font-size:16px}
+.controls-group{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
+.primary{background:#00f0ff;color:#041726;font-weight:700}
+.danger{background:#ff6b6b;color:#101018;font-weight:700}
+#progressBar{height:10px;background:#222;border-radius:6px;overflow:hidden;border:1px solid #333}
+#progress{height:100%;width:0;background:linear-gradient(90deg,rgba(0,240,255,0.8),rgba(0,255,127,0.6));transition:width 0.25s}
+#feedbackList{font-family:'Roboto Mono',monospace;background:#000;color:#00ff7f;padding:8px;height:220px;overflow:auto;border:1px solid #00ff7f;white-space:pre-wrap}
+#dynamicControls{display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto} /* limit height and allow vertical scroll */
+.control-row{display:flex;gap:8px;align-items:center}
+.control-row label{min-width:90px}
+.small-input{padding:6px;border-radius:6px;border:none;background:#3d3d52;color:#00f0ff}
+#mainChart{width:100%;height:320px}
+.video-container{position:relative;height:300px;background:#000;border-radius:8px;overflow:hidden;border:3px solid #00f0ff;--zoom-factor:1;--pan-x:0;--pan-y:0;transform-origin:center center}
+.video-container img, .video-container video{width:100%;height:100%;object-fit:cover;transform:scale(var(--zoom-factor)) translate(var(--pan-x), var(--pan-y));transition:transform 0.1s ease}
+.toggle-btn{position:absolute;bottom:12px;right:12px;padding:8px 10px;border-radius:6px;background:#00f0ff;color:#041726;border:2px solid #00f0ff;font-weight:700}
+.small-toggle{position:absolute;bottom:12px;left:12px;padding:6px 8px;border-radius:6px;background:#ff6b6b;color:#101018;border:2px solid #ff6b6b;font-weight:700}
+.zoom-btn{position:absolute;top:12px;right:12px;padding:6px 10px;border-radius:6px;background:#00f0ff;color:#041726;border:2px solid #00f0ff;font-size:16px;font-weight:700;cursor:pointer}
+.zoom-btn.minus{right:60px}
+.zoom-btn.reset{right:100px;background:#f39c12;color:#101018;border:2px solid #f39c12}
+.zoom-btn.expand{position:absolute;top:12px;right:140px}
+.label-muted{font-size:12px;color:#9aaab4;margin-left:6px}
+.readout-value{font-family:'Roboto Mono',monospace;font-size:16px;color:#00ff7f;background:#101018;padding:4px 8px;border-radius:4px;min-width:100px;text-align:right;}
+/* dropdown styling */
+.var-dropdown{display:none;position:absolute;top:38px;left:0;background:#1e1e2f;border:1px solid #00f0ff55;border-radius:8px;box-shadow:0 0 10px rgba(0,255,255,0.3);z-index:10;min-width:140px;max-height:260px;overflow:auto}
+.var-dropdown .item{padding:8px 10px;cursor:pointer;border-bottom:1px solid #00f0ff22;color:#00f0ff}
+.var-dropdown .item:hover{background:#00f0ff22}
+@media(max-width:900px){.container{flex-direction:column}.left-column{width:100%;order:2}.right-column{order:1}}
+/* small layout tweaks for the new button card */
+.left-controls-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.left-controls-row button{flex:1}
+</style>
+</head>
+<body>
+<div class="header-bar">
+  <h1 id="experimentTitle"> Virtual Lab DESE : DC motor control experiment Session</h1>
+  <div id="timer">Time Left: 00:00</div>
+</div>
+
+<!-- Session Closed Overlay -->
+<div id="sessionClosed" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#1c1c2b; color:#e0e0e0; z-index:9999; align-items:center; justify-content:center; flex-direction:column; font-size:2em;">
+  <h2>Session Closed</h2>
+  <p>Book another slot to continue.</p>
+  <button onclick="window.location.href='/'" style="padding:10px 20px; background:#00f0ff; color:#041726; border:none; border-radius:6px; font-weight:700;">Go to Homepage</button>
+</div>
+
+<div class="container">
+  <div class="left-column">
+    <div class="card">
+      <h3>Board & Firmware Upload</h3>
+
+      <label style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+        Board
+        <select id="boardType" class="small-input" style="width:160px;margin-left:6px">
+          <option value="esp32">esp32</option>
+          <option value="esp8266">esp8266</option>
+          <option value="arduino">arduino</option>
+          <option value="attiny">attiny</option>
+          <option value="stm32">stm32</option>
+          <option value="nucleo_f446re">nucleo_f446re</option>
+          <option value="black_pill">black_pill</option>
+          <option value="tiva">tiva</option>
+          <option value="tms320f28377s">tms320f28377s</option>
+          <option value="msp430">msp430</option>
+          <option value="generic">generic</option>
+        </select>
+      </label>
+
+      <input id="firmwareInput" type="file" accept=".bin,.hex,.out,.txt,.dfu" style="width:100%;margin-bottom:8px">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="primary" id="flashBtn">Flash Firmware</button>
+        <button id="cancelFlash" style="background:#444;color:#fff;border-radius:6px;padding:8px 10px">Cancel</button>
+      </div>
+      <div id="progressBar"><div id="progress"></div></div>
+      <div id="flashStatus" style="margin-top:8px;font-family:Roboto Mono;color:#9aaab4">Status: idle</div>
+    </div>
+
+    <!-- NEW: Factory reset / View SOP card (placed between Firmware and Serial monitor) -->
+    <div class="card">
+      <h3>Quick Actions</h3>
+      <div class="left-controls-row" style="margin-bottom:8px">
+        <!-- Factory Reset (red danger button as requested - option 1) -->
+        <button id="factoryResetBtn" class="danger">Factory Reset</button>
+
+        <!-- View / Download SOP -->
+        <button id="viewSopBtn" class="primary">View SOP</button>
+
+        <!-- Power Supply Control -->
+        <button id="powerSupplyBtn" class="primary" style="background:#2ecc71; color:#1c1c2b">Power Supply OFF</button>
+      </div>
+      <div style="font-size:13px;color:#9aaab4"></div>
+    </div>
+
+    <div class="card">
+      <h3>Serial Monitor & Connect</h3>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <select id="baudSelect" class="small-input">
+          <option>300</option><option>1200</option><option>2400</option><option>4800</option><option>9600</option>
+          <option>19200</option><option>38400</option><option>57600</option><option selected>115200</option>
+          <option>230400</option><option>custom</option>
+        </select>
+        <input id="customBaud" class="small-input" placeholder="Custom" style="width:80px;display:none">
+        <select id="serialPort" class="small-input" style="width:140px"></select>
+        <button id="refreshPorts" style="background:#333;color:#fff;border-radius:6px;padding:6px 8px">Refresh</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="primary" id="connectBtn">Connect</button>
+        <button class="danger" id="disconnectBtn" disabled>Disconnect</button>
+        <button id="clearLog" style="background:#333;color:#fff;border-radius:6px">Clear</button>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input id="cmdInput" placeholder="Type command and press Send" style="flex:1;padding:6px;border-radius:6px;border:none;background:#3d3d52;color:#00f0ff">
+        <button class="primary" id="sendBtn">Send</button>
+      </div>
+
+      <div id="feedbackList">waiting for device...</div>
+    </div>
+
+    <div class="card">
+      <h3>Dynamic Controls</h3>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <div style="position:relative;display:inline-block">
+          <button id="addSlider" class="primary">Add Slider ⏷</button>
+          <div id="varDropdown" class="var-dropdown"></div>
+        </div>
+
+        <div style="position:relative;display:inline-block">
+          <button id="addButton" class="primary">Add Button ⏷</button>
+        </div>
+
+        <div style="position:relative;display:inline-block">
+          <button id="addReadout" class="primary">Add Readout ⏷</button>
+        </div>
+
+        <button id="saveLayout" style="background:#2ecc71">Save Layout</button>
+        <button id="loadLayout" style="background:#f39c12">Load Layout</button>
+      </div>
+      <div id="dynamicControls"></div>
+      <div style="margin-top:8px;color:#9aaab4;font-size:13px">Click the small ❌ on a control to remove it.</div>
+    </div>
+  </div>
+
+  <div class="right-column">
+    <div class="card" id="chartCard">
+      <h3>Real-time Sensor Data Chart 📈</h3>
+      <button class="zoom-btn expand" id="expandChartBtn" title="Open Chart in New Tab">[ ]</button>
+      <button id="chartZoomReset" class="zoom-btn reset" title="Reset Zoom">■</button>
+      <button id="chartZoomOut" class="zoom-btn minus" title="Zoom Out">-</button>
+      <button id="chartZoomIn" class="zoom-btn" title="Zoom In">+</button>
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+        <label style="display:flex;gap:6px;align-items:center">X-Axis
+          <select id="xAxisFilter" class="small-input" style="width:140px;margin-left:6px">
+            <option value="time">Time (s)</option><option value="samples">Samples</option>
+          </select>
+        </label>
+
+        <label style="display:flex;gap:6px;align-items:center">Y-Axis 1
+          <select id="yAxisFilter1" class="small-input" style="width:140px;margin-left:6px"></select>
+        </label>
+
+        <label style="display:flex;gap:6px;align-items:center">Y-Axis 2
+          <select id="yAxisFilter2" class="small-input" style="width:140px;margin-left:6px">
+            <option value="">(Disabled)</option>
+          </select>
+        </label>
+        <button id="exportCSV" style="background:#444;color:#fff;border-radius:6px;padding:8px 10px">Export CSV</button>
+      </div>
+
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+        <label>Scaling: <button id="mainScalingToggle" class="primary">Auto</button></label>
+        <div id="mainManualControls" style="display:none; gap:8px; display:flex; align-items:center;">
+          <label>Y1 Max: <input type="number" id="mainY1Max" class="small-input" value="100" min="0" step="10"></label>
+          <button id="mainY1Plus" class="primary">+</button>
+          <button id="mainY1Minus" class="primary">-</button>
+          <label>Y2 Max: <input type="number" id="mainY2Max" class="small-input" value="100" min="0" step="10"></label>
+          <button id="mainY2Plus" class="primary">+</button>
+          <button id="mainY2Minus" class="primary">-</button>
+        </div>
+      </div>
+
+      <div style="border-radius:8px;overflow:hidden;background:#0e1116;padding:6px">
+        <canvas id="mainChart"></canvas>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:8px;align-items:center">
+        <button id="pauseChart" class="primary">Pause Chart</button>
+        <div class="label-muted" id="chartStatus">Running — last update: --</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Live Video Feed</h3>
+      <div class="video-container">
+        <img id="videoFeed" alt="camera">
+    <audio id="audioFeed" autoplay></audio>
+        <button id="expandVideoBtn" class="zoom-btn expand" title="Open Video in New Tab">[ ]</button>
+        <button id="zoomReset" class="zoom-btn reset">■</button>
+        <button id="zoomOut" class="zoom-btn minus">-</button>
+        <button id="zoomIn" class="zoom-btn">+</button>
+        <button id="toggleAudio" class="toggle-btn">Start Audio</button>
+        <button id="toggleVideo" class="small-toggle">Video OFF</button>
+      </div>
+      <div style="margin-top:8px;color:#9aaab4"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const sessionDuration = {{ session_duration | tojson }};
+const sessionEndTimeFromServer = {{ session_end_time | tojson }};
+</script>
+
+<script>
+// Dynamic host configuration - automatically detects IP and ports
+const BASE_URL = window.location.origin;  // e.g., http://192.168.1.100:5000
+const VIDEO_PORT = 8080;  // Camera stream port - change if different
+const AUDIO_PORT = 9000;  // Audio server port - change if different
+
+// Video stream URL - uses same host as current page but different port for camera
+const videoUrl = `${window.location.protocol}//${window.location.hostname}:${VIDEO_PORT}/?action=stream&resolution=1920x1080&quality=100`;
+
+// Audio server URL - uses same host but audio port
+const audioServerUrl = `${window.location.protocol}//${window.location.hostname}:${AUDIO_PORT}`;
+
+console.log('Video URL:', videoUrl);
+console.log('Audio server URL:', audioServerUrl);
+
+/* ----------------- SOCKET.IO ----------------- */
+const socket = io.connect(window.location.origin, { transports: ['websocket', 'polling'] });
+
+/* ----------------- UI refs ----------------- */
+const flashBtn = document.getElementById('flashBtn');
+const progressEl = document.getElementById('progress');
+const flashStatus = document.getElementById('flashStatus');
+const cancelFlash = document.getElementById('cancelFlash');
+const baudSelect = document.getElementById('baudSelect');
+const customBaud = document.getElementById('customBaud');
+const connectBtn = document.getElementById('connectBtn');
+const disconnectBtn = document.getElementById('disconnectBtn');
+const serialPortSelect = document.getElementById('serialPort');
+const refreshPorts = document.getElementById('refreshPorts');
+const feedbackList = document.getElementById('feedbackList');
+const sendBtn = document.getElementById('sendBtn');
+const cmdInput = document.getElementById('cmdInput');
+const clearLog = document.getElementById('clearLog');
+const dynamicControls = document.getElementById('dynamicControls');
+const addReadoutBtn = document.getElementById('addReadout');
+const addSliderBtn = document.getElementById('addSlider');
+const addButtonBtn = document.getElementById('addButton');
+const saveLayoutBtn = document.getElementById('saveLayout');
+const loadLayoutBtn = document.getElementById('loadLayout');
+const boardType = document.getElementById('boardType');
+
+const factoryResetBtn = document.getElementById('factoryResetBtn');
+const viewSopBtn = document.getElementById('viewSopBtn');
+const powerSupplyBtn = document.getElementById('powerSupplyBtn');
+
+/* ----------------- SESSION MANAGEMENT ----------------- */
+const urlParams = new URLSearchParams(window.location.search);
+const sessionKey = urlParams.get('key');
+let openedWindows = []; // Track opened windows for cleanup
+
+/* ----------------- POWER SUPPLY CONTROL ----------------- */
+let powerSupplyState = 'off'; // Initial state is OFF
+
+powerSupplyBtn.addEventListener('click', async () => {
+  try {
+    const newState = powerSupplyState === 'off' ? 'on' : 'off';
+    const response = await fetch('/toggle_relay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        state: newState,
+        session_key: sessionKey
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.status === newState) {
+      powerSupplyState = newState;
+      powerSupplyBtn.innerText = `Power Supply ${newState.toUpperCase()}`;
+      powerSupplyBtn.style.background = newState === 'on' ? '#ff6b6b' : '#2ecc71';
+      feedbackAdd(`[power] Power supply turned ${newState}`);
+    } else {
+      feedbackAdd(`[power] Error turning power ${newState}: ${result.message || 'Unknown error'}`);
+    }
+  } catch (error) {
+    feedbackAdd(`[power] Request failed: ${error}`);
+  }
+});
+
+const pauseChartBtn = document.getElementById('pauseChart');
+const exportCSVBtn = document.getElementById('exportCSV');
+
+const xAxisFilter = document.getElementById('xAxisFilter');
+const yAxisFilter1 = document.getElementById('yAxisFilter1');
+const yAxisFilter2 = document.getElementById('yAxisFilter2');
+
+const varDropdown = document.getElementById('varDropdown');
+
+let connectTimeoutHandle = null;
+let socketConnected = false;
+let sampleCount = 0; // alias for compatibility with new sensor_data handler
+let running = true;
+let lastSelectedKey1 = ''; // track last selected key to clear chart when changed
+
+/* ----------------- Helpers ----------------- */
+function feedbackAdd(line){
+  const prefix = (new Date()).toLocaleTimeString() + ' ';
+  feedbackList.innerText += prefix + line + '\n';
+  const lines = feedbackList.innerText.split('\n');
+  if(lines.length > 300) feedbackList.innerText = lines.slice(-300).join('\n');
+  feedbackList.scrollTop = feedbackList.scrollHeight;
+}
+
+/* ----------------- PORTS (auto-detect) ----------------- */
+function requestPorts(){
+  socket.emit('list_ports');
+}
+refreshPorts.addEventListener('click', requestPorts);
+socket.on('ports_list', (ports) => {
+  serialPortSelect.innerHTML = '';
+  if(!ports || ports.length===0){
+    const opt = document.createElement('option'); opt.value=''; opt.innerText = '(none)';
+    serialPortSelect.appendChild(opt);
+    return;
+  }
+  ports.forEach(p => {
+    const opt = document.createElement('option'); opt.value = p; opt.innerText = p;
+    serialPortSelect.appendChild(opt);
+  });
+});
+requestPorts();
+
+/* ----------------- FLASH ----------------- */
+if(flashBtn) {
+  flashBtn.addEventListener('click', () => {
+    const file = document.getElementById('firmwareInput').files[0];
+    if(!file){ alert('Select a firmware file'); return; }
+    const board = boardType.value;
+    const port = serialPortSelect.value || '';
+    flashBtn.disabled = true; cancelFlash.disabled = false;
+    flashStatus.innerText='Uploading firmware...';
+    progressEl.style.width = '4%';
+    const fd = new FormData();
+    fd.append('firmware', file);
+    fd.append('board', board);
+    fd.append('port', port);
+    fetch('/flash', { method:'POST', body: fd })
+      .then(r => r.json()).then(j => {
+        flashStatus.innerText = j.status || 'Flashing started';
+      }).catch(e => {
+        flashStatus.innerText = 'Error: ' + e; flashBtn.disabled=false; cancelFlash.disabled=true;
+      });
+  });
+}
+if(cancelFlash) cancelFlash.addEventListener('click', () => {
+  flashBtn.disabled=false; cancelFlash.disabled=true; progressEl.style.width='0%'; flashStatus.innerText='Cancelled (UI)';
+});
+
+/* Flash status stream */
+socket.on('flashing_status', (d) => {
+  if(!d) return;
+  const txt = String(d);
+  flashStatus.innerText = txt;
+  feedbackAdd('[flash] ' + txt);
+  const m = txt.match(/(\d{1,3})%/);
+  if(m) progressEl.style.width = m[1] + '%';
+  if(/complete|done|success|✅/i.test(txt)){
+    progressEl.style.width = '100%';
+    flashBtn.disabled = false; cancelFlash.disabled = true;
+  }
+});
+
+/* ----------------- FACTORY RESET (client) ----------------- */
+factoryResetBtn.addEventListener('click', async () => {
+  const board = boardType.value || 'generic';
+  const confirmReset = confirm(`Factory Reset will flash the default firmware for board: ${board}.\nProceed?`);
+  if(!confirmReset) return;
+  try {
+    feedbackAdd(`[factory] Requesting factory reset for ${board}...`);
+    const resp = await fetch('/factory_reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ board })
+    });
+    const j = await resp.json();
+    if(resp.ok){
+      feedbackAdd(`[factory] ${j.status || 'Factory reset started'}`);
+    } else {
+      feedbackAdd(`[factory] ERROR: ${j.error || JSON.stringify(j)}`);
+      alert('Factory reset failed: ' + (j.error || 'unknown'));
+    }
+  } catch (e) {
+    feedbackAdd(`[factory] Request failed: ${e}`);
+    alert('Factory reset request failed: ' + e);
+  }
+});
+
+/* ----------------- VIEW SOP (client) ----------------- */
+viewSopBtn.addEventListener('click', () => {
+  // open the sop PDF (server serves from /sop/exp.pdf)
+  window.open('/sop/exp.pdf', '_blank');
+});
+
+/* ----------------- SERIAL CONNECT / MONITOR ----------------- */
+baudSelect.addEventListener('change', () => {
+  if(baudSelect.value === 'custom') customBaud.style.display = 'inline-block';
+  else customBaud.style.display = 'none';
+});
+
+connectBtn.addEventListener('click', () => {
+  const port = serialPortSelect.value || '/dev/ttyUSB0';
+  const baud = (baudSelect.value==='custom') ? parseInt(customBaud.value||'115200') : parseInt(baudSelect.value);
+  connectBtn.disabled = true; disconnectBtn.disabled = true;
+  feedbackAdd(`Connecting to ${port}@${baud} ...`);
+  socket.emit('connect_serial', { port, baud });
+  if(connectTimeoutHandle) clearTimeout(connectTimeoutHandle);
+  connectTimeoutHandle = setTimeout(() => {
+    feedbackAdd('⚠️ Serial connect timed out (no response).');
+    connectBtn.disabled = false; disconnectBtn.disabled = true;
+  }, 6000);
+});
+
+disconnectBtn.addEventListener('click', () => {
+  socket.emit('disconnect_serial'); feedbackAdd('Requested disconnect.');
+});
+
+sendBtn.addEventListener('click', () => {
+  const txt = cmdInput.value.trim(); if(!txt) return;
+  socket.emit('send_command', { cmd: txt });
+  feedbackAdd('> ' + txt); cmdInput.value = '';
+});
+
+cmdInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    sendBtn.click();
+  }
+});
+clearLog.addEventListener('click', () => { feedbackList.innerText=''; });
+
+socket.on('serial_status', (info) => {
+  if(connectTimeoutHandle){ clearTimeout(connectTimeoutHandle); connectTimeoutHandle = null; }
+  if(info && info.status === 'connected'){
+    connectBtn.disabled = true; disconnectBtn.disabled = false;
+    feedbackAdd(`✅ Connected: ${info.port}@${info.baud}`);
+    requestPorts(); // refresh port list again
+    socket.emit('list_ports'); // optional redundant safety
+    updateYAxisFilterOptions([]); // prepare Y-axis dropdowns for dynamic data
+
+  } else if(info && info.status === 'error'){
+    connectBtn.disabled = false; disconnectBtn.disabled = true;
+    feedbackAdd(`🔴 Serial error: ${info.message || ''}`);
+  } else {
+    connectBtn.disabled = false; disconnectBtn.disabled = true;
+    feedbackAdd(`🔴 Disconnected`);
+  }
+});
+
+/* handle raw feedback lines (we parse many formats here) */
+function parseLineToMap(line){
+  // Flexible parsing for various key-value formats
+  // Accepts separators: ',', ';', and within pairs: ':', '=', '>', '<', ' ', '&', '|', etc.
+  // Handles multiple pairs per line, even without commas
+  // Also handles single pair per line
+  const out = {};
+  if(!line || typeof line !== 'string') return out;
+  // Remove timestamps (common when prefs append "15:22:33 " etc) by dropping leading time if it's like HH:MM:SS
+  const trimmed = line.trim().replace(/^\d{1,2}:\d{2}:\d{2}\s*/, '');
+  // First, split on comma or semicolon to get potential pair groups
+  const pairGroups = trimmed.split(/[,;]/);
+  pairGroups.forEach(group => {
+    if(!group.trim()) return;
+    // Normalize separators within the group to spaces
+    const normalized = group.replace(/[:=>@#>^!$*~\\|+%-\s&|]+/g, ' ').trim();
+    // Split into tokens
+    const tokens = normalized.split(/\s+/);
+    // Pair every two tokens as key value
+    for(let i = 0; i < tokens.length; i += 2){
+      if(i + 1 < tokens.length){
+        const k = tokens[i].trim().toLowerCase();
+        const rawv = tokens[i + 1].trim();
+        // Try to parse value
+        const num = Number(rawv);
+        if(!isNaN(num)) out[k] = num;
+        else {
+          // try boolean like 0/1 or 'on'/'off'
+          if(rawv === '1' || rawv.toLowerCase() === 'on' || rawv.toLowerCase() === 'true') out[k] = 1;
+          else if(rawv === '0' || rawv.toLowerCase() === 'off' || rawv.toLowerCase() === 'false') out[k] = 0;
+          else {
+            // not numeric - store raw string
+            out[k] = rawv;
+          }
+        }
+      }
+    }
+  });
+  return out;
+}
+
+socket.on('feedback', (line) => {
+  if(line === undefined || line === null) return;
+  const text = String(line);
+  feedbackAdd(text);
+
+  // If this feedback line contains key/value pairs, parse and feed into sensor_data handler
+  try {
+    // quick check for presence of separators and at least one digit
+    if((text.includes(':') || text.includes('=') || text.includes('@') || text.includes(';') || text.includes(',')) && /\d/.test(text)){
+      const parsed = parseLineToMap(text);
+      // Only emit if parsed contains at least one numeric value
+      const hasNumeric = Object.values(parsed).some(v => typeof v === 'number' && !isNaN(v));
+      if(Object.keys(parsed).length > 0 && hasNumeric){
+        // update known keys on client side and also call sensor_data handler directly
+        socket.emit('sensor_data', parsed); // We call the same event name the server uses - processed client-side too
+      }
+    }
+  } catch(e){ /* ignore parse errors */ }
+});
+
+/* ----------------- DYNAMIC CONTROLS (auto variable choices) ----------------- */
+let knownSensorKeys = new Set(); // dynamic now
+function createControlElement(cfg){
+  const wrapper = document.createElement('div');
+  wrapper.className='control-row';
+  wrapper.style.border='1px solid #333';
+  wrapper.style.padding='8px';
+  wrapper.style.borderRadius='8px';
+
+  const content = document.createElement('div');
+  content.style.flex='1';
+  content.style.display='flex';
+  content.style.alignItems='center';
+  content.style.flexWrap='wrap';
+  content.style.gap='6px';
+
+  const label = document.createElement('div');
+  label.innerText = cfg.label;
+  label.style.fontWeight='700';
+  label.style.minWidth='100px';
+  content.appendChild(label);
+
+  const removeBtn = document.createElement('button');
+  removeBtn.innerText='❌';
+  removeBtn.style.marginLeft='8px';
+  removeBtn.onclick = () => wrapper.remove();
+
+  /* ============ SLIDER CONTROL ============ */
+  if(cfg.type === 'slider'){
+    const varSelect = document.createElement('select');
+    varSelect.className='small-input';
+    varSelect.style.width='120px';
+    varSelect.style.marginRight='8px';
+    Array.from(knownSensorKeys).forEach(k => {
+      const o = document.createElement('option');
+      o.value=k;
+      o.innerText=k;
+      varSelect.appendChild(o);
+    });
+    if(cfg.dataKey) varSelect.value = cfg.dataKey;
+
+    const slider = document.createElement('input');
+    slider.type='range';
+    slider.min = cfg.min || 0;
+    slider.max = cfg.max || 1023;
+    slider.value = cfg.value !== undefined ? cfg.value : Math.floor(((Number(slider.min)||0)+(Number(slider.max)||1023))/2);
+    slider.style.flex='1';
+
+    const valSpan = document.createElement('span');
+    valSpan.innerText = slider.value;
+    valSpan.style.marginLeft='8px';
+    valSpan.style.minWidth='30px';
+
+    let sliderTimeout = null;
+    let fixedVar = cfg.dataKey || varSelect.value; // lock selected variable
+
+    slider.oninput = () => {
+      valSpan.innerText = slider.value;
+      const cmd = `${slider.value}`;  // ✅ send ONLY the numeric value
+      if (sliderTimeout) clearTimeout(sliderTimeout);
+      sliderTimeout = setTimeout(() => {
+        socket.emit('send_command', { cmd });
+        feedbackAdd(`(slider ${fixedVar}) sent value: ${cmd}`);
+      }, 120);
+    };
+
+
+    content.appendChild(varSelect);
+    content.appendChild(slider);
+    content.appendChild(valSpan);
+  }
+
+ /* ============ TOGGLE BUTTON CONTROL (send only your custom commands) ============ */
+else if(cfg.type === 'button'){
+  const onCmd = prompt('Enter command for ON state (send only value or full string):', '1') || '';
+  const offCmd = prompt('Enter command for OFF state:', '0') || '';
+  
+  const btn = document.createElement('button');
+  btn.className = 'primary';
+  btn.innerText = cfg.label || 'TOGGLE';
+  btn.style.minWidth = '120px';
+  
+  let toggled = false;
+  btn.onclick = () => {
+    toggled = !toggled;
+    btn.style.opacity = toggled ? '0.7' : '1';
+    const cmd = toggled ? onCmd : offCmd;
+    socket.emit('send_command', { cmd });  // ✅ sends only what you typed, e.g. "1" or "0"
+    feedbackAdd(`(button ${cfg.label}) sent: ${cmd}`);
+  };
+  content.appendChild(btn);
+}
+
+
+  /* ============ READOUT CONTROL ============ */
+  else if(cfg.type === 'readout'){
+    const keySelect = document.createElement('select');
+    keySelect.className='small-input';
+    keySelect.style.width='140px';
+    keySelect.style.marginRight='8px';
+    Array.from(knownSensorKeys).forEach(k => {
+      const o = document.createElement('option');
+      o.value=k;
+      o.innerText=k;
+      keySelect.appendChild(o);
+    });
+    const valSpan = document.createElement('span');
+    valSpan.className='readout-value';
+    valSpan.id = 'readout-' + Math.random().toString(36).slice(2,9);
+    valSpan.setAttribute('data-key', cfg.dataKey || keySelect.value);
+    valSpan.setAttribute('data-unit', cfg.unit || '');
+    valSpan.setAttribute('data-decimals', isNaN(cfg.decimals) ? '' : cfg.decimals);
+    valSpan.innerText='--';
+    keySelect.onchange = () => valSpan.setAttribute('data-key', keySelect.value);
+    content.appendChild(keySelect);
+    content.appendChild(valSpan);
+  }
+
+  wrapper.appendChild(content);
+  wrapper.appendChild(removeBtn);
+  dynamicControls.appendChild(wrapper);
+}
+
+/* Add slider — uses varDropdown items (varDropdown is managed below) */
+addSliderBtn.addEventListener('click', () => {
+  // show varDropdown with mode slider
+  showVarDropdown('slider');
+});
+
+/* Add button */
+addButtonBtn.addEventListener('click', () => {
+  showVarDropdown('button');
+});
+
+/* Add readout */
+addReadoutBtn.addEventListener('click', () => {
+  showVarDropdown('readout');
+});
+
+/* Save / Load layout (localStorage) */
+saveLayoutBtn.addEventListener('click', () => {
+  const rows = document.querySelectorAll('#dynamicControls .control-row');
+  const arr = [];
+  rows.forEach(r => {
+    if(r.querySelector('input[type="range"]')) {
+      const label = r.querySelector('div').innerText;
+      const sel = r.querySelector('select');
+      arr.push({type:'slider', label, dataKey: sel ? sel.value : '', min: r.querySelector('input[type="range"]').min, max: r.querySelector('input[type="range"]').max});
+    } else if(r.querySelector('button.primary')) {
+      const sel = r.querySelector('select');
+      arr.push({type:'button', label: r.querySelector('div').innerText, dataKey: sel ? sel.value : ''});
+    } else if(r.querySelector('.readout-value')) {
+      const key = r.querySelector('.readout-value').getAttribute('data-key');
+      arr.push({type:'readout', dataKey: key});
+    }
+  });
+  localStorage.setItem('evl_layout', JSON.stringify(arr));
+  alert('Layout saved locally.');
+});
+loadLayoutBtn.addEventListener('click', () => {
+  const raw = localStorage.getItem('evl_layout'); if(!raw){ alert('No saved layout'); return; }
+  dynamicControls.innerHTML = '';
+  const arr = JSON.parse(raw);
+  arr.forEach(cfg => createControlElement(cfg));
+});
+
+/* ----------------- CHART (keeps your existing logic + export) ----------------- */
+const chartCtx = document.getElementById('mainChart').getContext('2d');
+const visiblePoints = 50;
+const chartBuffer = [];
+let lastChartUpdate = 0;
+
+const chart = new Chart(chartCtx, {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'Series 1', data: [], borderColor: '#00f0ff', borderWidth: 2, pointRadius: 0, fill: false, yAxisID: 'y' },
+    { label: 'Series 2', data: [], borderColor: '#00ff7f', borderWidth: 2, pointRadius: 0, fill: false, yAxisID: 'y1', hidden: true }
+  ]},
+  options: {
+    animation: false, responsive: true, maintainAspectRatio: false,
+    scales: {
+      x: { display: true, grid: { color: '#222' }, title: { display:true, text: 'Time (s)' } },
+      y: { display: true, position: 'left', grid: { color: '#333' }, title: { display:true, text: 'Series 1' }, beginAtZero: true, min: 0 },
+      y1: { display: true, position: 'right', grid: { drawOnChartArea: false }, title: { display:true, text: 'Series 2 (Disabled)' }, beginAtZero: true, min: 0 }
+    },
+    plugins: {
+      legend: { display: true, labels: { color: '#e0e0e0' } },
+      zoom: {
+        pan: { enabled: true, mode: 'xy' },
+        zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }
+      }
+    }
+  }
+});
+
+function chartLoop(){
+  if(!running){ requestAnimationFrame(chartLoop); return; }
+  const take = chartBuffer.splice(0, 5); // take more points per update
+  if(take.length && Date.now() - lastChartUpdate > 200){ // faster updates for smoother chart
+    const xAxisMode = xAxisFilter.value;
+    take.forEach(v => {
+      if (xAxisMode === 'time') chart.data.labels.push(new Date(v.ts).toLocaleTimeString('en-GB', { hour12: false }));
+      else chart.data.labels.push(v.sampleCount);
+      chart.data.datasets[0].data.push(v.value1 !== null ? v.value1 : NaN);
+      chart.data.datasets[1].data.push(v.value2 !== null ? v.value2 : NaN);
+    });
+    while(chart.data.labels.length > visiblePoints){
+      chart.data.labels.shift(); chart.data.datasets[0].data.shift(); chart.data.datasets[1].data.shift();
+    }
+    chart.update('none');
+    document.getElementById('chartStatus').innerText = `Running — last update: ${new Date().toLocaleTimeString()}`;
+    lastChartUpdate = Date.now();
+  }
+  requestAnimationFrame(chartLoop);
+}
+requestAnimationFrame(chartLoop);
+
+function updateChartConfig(){
+  const sel1 = yAxisFilter1.value; 
+  const sel2 = yAxisFilter2.value;
+  const opt1 = yAxisFilter1.options[yAxisFilter1.selectedIndex];
+  const opt2 = yAxisFilter2.options[yAxisFilter2.selectedIndex];
+
+  if(sel1 !== lastSelectedKey1) {
+    chart.data.labels = [];
+    chart.data.datasets[0].data = [];
+    chart.data.datasets[1].data = [];
+    lastSelectedKey1 = sel1;
+  }
+  const xAxisMode = xAxisFilter.value;
+  chart.options.scales.x.title.text = xAxisMode === 'time' ? 'Time (s)' : 'Samples';
+  if(opt1){ chart.data.datasets[0].label = opt1.innerText; chart.options.scales.y.title.text = opt1.innerText; }
+  if(opt2 && sel2 !== ''){ 
+    chart.data.datasets[1].hidden = false; 
+    chart.data.datasets[1].label = opt2.innerText; 
+    chart.options.scales.y1.display = true; 
+    chart.options.scales.y1.title.text = opt2.innerText; 
+  } else { 
+    chart.data.datasets[1].hidden = true; 
+    chart.data.datasets[1].label = 'Signal 2 (Disabled)'; 
+    chart.options.scales.y1.display = false; 
+    chart.options.scales.y1.title.text = 'Signal 2 (Disabled)'; 
+  }
+  chart.update('none');
+}
+xAxisFilter.addEventListener('change', updateChartConfig);
+yAxisFilter1.addEventListener('change', updateChartConfig);
+yAxisFilter2.addEventListener('change', updateChartConfig);
+
+/* Dynamically populate Y-axis options based on knownSensorKeys */
+function updateYAxisFilterOptions(newKeys){
+  let updated = false;
+  newKeys.forEach(k => {
+    if(!knownSensorKeys.has(k)) { knownSensorKeys.add(k); updated = true; }
+  });
+  if(!updated && yAxisFilter1.options.length > 0 && yAxisFilter1.value) return; 
+  const cur1 = yAxisFilter1.value;
+  const cur2 = yAxisFilter2.value;
+  yAxisFilter1.innerHTML = '';
+  yAxisFilter2.innerHTML = '<option value="">(Disabled)</option>';
+  const keysArray = Array.from(knownSensorKeys);
+  keysArray.forEach(k => {
+    const displayLabel = k.split('_').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
+    const o1 = document.createElement('option'); o1.value=k; o1.innerText = displayLabel; yAxisFilter1.appendChild(o1);
+    const o2 = document.createElement('option'); o2.value=k; o2.innerText = displayLabel; yAxisFilter2.appendChild(o2);
+  });
+  // Keep current selection if valid, otherwise use first available
+  let defaultKey1 = cur1 && knownSensorKeys.has(cur1) ? cur1 : (keysArray.length > 0 ? keysArray[0] : '');
+  yAxisFilter1.value = defaultKey1;
+  let defaultKey2 = cur2 && knownSensorKeys.has(cur2) ? cur2 : (keysArray.length > 1 ? keysArray[1] : '');
+  yAxisFilter2.value = defaultKey2;
+  updateChartConfig(); 
+}
+
+/* ----------------- SENSOR DATA handling ----------------- */
+socket.on('sensor_data', (payload) => {
+  if (!payload) return;
+  sampleCount++;
+
+  // Get available numeric keys
+  const numericKeys = Object.keys(payload).filter(k =>
+    payload[k] !== null && payload[k] !== undefined &&
+    !isNaN(Number(payload[k]))
+  ).map(k => k.toLowerCase());
+
+  // Update known sensor keys
+  numericKeys.forEach(k => {
+    if(!knownSensorKeys.has(k)) knownSensorKeys.add(k);
+  });
+
+  // Update dropdown options
+  updateYAxisFilterOptions(numericKeys);
+
+  // Auto-select axes immediately if empty
+  let axesChanged = false;
+  if (!yAxisFilter1.value && numericKeys.length > 0) {
+    yAxisFilter1.value = numericKeys[0];
+    axesChanged = true;
+  }
+  if (!yAxisFilter2.value && numericKeys.length > 1) {
+    yAxisFilter2.value = numericKeys[1];
+    axesChanged = true;
+  }
+
+  // Update chart config immediately if axes changed
+  if (axesChanged) {
+    updateChartConfig();
+  }
+
+  // Get values for selected axes
+  const key1 = yAxisFilter1.value;
+  const key2 = yAxisFilter2.value;
+  const val1 = key1 && payload[key1] !== undefined ? Number(payload[key1]) :
+               key1 && payload[key1.toLowerCase()] !== undefined ? Number(payload[key1.toLowerCase()]) : null;
+  const val2 = key2 && payload[key2] !== undefined ? Number(payload[key2]) :
+               key2 && payload[key2.toLowerCase()] !== undefined ? Number(payload[key2.toLowerCase()]) : null;
+
+  // Add to chart buffer if we have data
+  if (val1 !== null || val2 !== null) {
+    chartBuffer.push({
+      ts: Date.now(),
+      sampleCount,
+      value1: val1,
+      value2: val2
+    });
+  }
+
+  // Update readouts efficiently
+  document.querySelectorAll('.readout-value').forEach(readout => {
+    const dataKey = readout.getAttribute('data-key');
+    if (!dataKey) return;
+
+    const rawV = payload[dataKey] !== undefined ? payload[dataKey] :
+                 payload[dataKey.toLowerCase()] !== undefined ? payload[dataKey.toLowerCase()] : undefined;
+
+    if(rawV !== undefined && !isNaN(Number(rawV))){
+      const value = Number(rawV);
+      const decimals = parseInt(readout.getAttribute('data-decimals')) || 2;
+      readout.innerText = value.toFixed(decimals);
+    } else {
+      readout.innerText = '--';
+    }
+  });
+});
+
+/* ----------------- fallback helper: convert snake/case and manage dropdowns ----------------- */
+function normalizeKey(k){ return String(k).trim().toLowerCase(); }
+
+/* ----------------- auto-create slider buttons in varDropdown (improves earlier behavior) ----------------- */
+let knownVarsShown = new Set();
+function autoCreateSlidersFromSensors(payloadKeys){
+  // payloadKeys may contain keys in original case; normalize
+  payloadKeys.forEach(k => {
+    const nk = normalizeKey(k);
+    if(!knownVarsShown.has(nk)){
+      knownVarsShown.add(nk);
+      // create an item in varDropdown
+      const item = document.createElement('div');
+      item.className = 'item';
+      item.innerText = nk;
+      item.onclick = () => {
+        // When clicked, default action is to create a slider for that variable
+        const minVal = parseInt(prompt(`Enter MIN value for ${nk}:`, '0'));
+        const maxVal = parseInt(prompt(`Enter MAX value for ${nk}:`, '1023'));
+        createControlElement({
+          type: 'slider',
+          label: nk.toUpperCase(),
+          min: isNaN(minVal) ? 0 : minVal,
+          max: isNaN(maxVal) ? 1023 : maxVal,
+          dataKey: nk,
+          cmdTemplate: `{key}:{value}`
+        });
+        // visually dim this item so user doesn't create same slider repeatedly
+        item.style.opacity = 0.4; item.style.pointerEvents = 'none';
+        hideVarDropdown();
+      };
+      varDropdown.appendChild(item);
+    }
+  });
+}
+
+/* ----------------- varDropdown show/hide and mode handling ----------------- */
+let varDropdownMode = 'slider'; // slider/button/readout
+function showVarDropdown(mode){
+  varDropdownMode = mode || 'slider';
+  // rebuild dropdown items from knownSensorKeys to include freshest keys
+  varDropdown.innerHTML = '';
+  const keys = Array.from(knownSensorKeys);
+  if(keys.length === 0){
+    const info = document.createElement('div'); info.className='item'; info.innerText='(no variables yet)'; varDropdown.appendChild(info);
+  } else {
+    keys.forEach(k => {
+      const item = document.createElement('div');
+      item.className = 'item';
+      item.innerText = k;
+      item.onclick = () => {
+        if(varDropdownMode === 'slider'){
+          const minVal = parseInt(prompt(`Enter MIN value for ${k}:`, '0'));
+          const maxVal = parseInt(prompt(`Enter MAX value for ${k}:`, '1023'));
+          createControlElement({ type:'slider', label: k.toUpperCase(), dataKey: k, min: isNaN(minVal)?0:minVal, max: isNaN(maxVal)?1023:maxVal, cmdTemplate:`{key}:{value}` });
+        } else if(varDropdownMode === 'button'){
+          const label = prompt('Button label (display):', `TOGGLE_BUTTON`) || `TOGGLE_BUTTON`;
+
+          createControlElement({ type:'button', label, dataKey: k, cmdOn: `${k}:1`, cmdOff: `${k}:0` });
+        } else if(varDropdownMode === 'readout'){
+          const label = prompt('Readout label (display):', k) || k;
+          createControlElement({ type:'readout', label, dataKey: k, unit: '', decimals: 1 });
+        }
+        hideVarDropdown();
+      };
+      varDropdown.appendChild(item);
+    });
+  }
+  varDropdown.style.display = 'block';
+}
+function hideVarDropdown(){ varDropdown.style.display = 'none'; }
+document.addEventListener('click', (e) => {
+  if(!e.target.closest('#addSlider') && !e.target.closest('#varDropdown') && !e.target.closest('#addButton') && !e.target.closest('#addReadout')) {
+    hideVarDropdown();
+  }
+});
+document.getElementById('addSlider').addEventListener('click', (e) => { e.stopPropagation(); showVarDropdown('slider'); });
+document.getElementById('addButton').addEventListener('click', (e) => { e.stopPropagation(); showVarDropdown('button'); });
+document.getElementById('addReadout').addEventListener('click', (e) => { e.stopPropagation(); showVarDropdown('readout'); });
+
+/* ----------------- fallback: parse feedback into sensor_data when server doesn't emit sensor_data */
+socket.on('feedback', (line) => {
+  // handled above — this second listener remains compatible; nothing to add here.
+});
+
+// Waveform config removed as per user request
+
+/* ----------------- Export CSV */
+exportCSVBtn.addEventListener('click', () => {
+  const labels = chart.data.labels;
+  const d1 = chart.data.datasets[0].data;
+  const d2 = chart.data.datasets[1].data;
+
+  // Use actual variable names for header
+  const header1 = chart.data.datasets[0].label || 'Signal1';
+  const header2 = chart.data.datasets[1].label || 'Signal2';
+  let csv = `Time,${header1},${header2}\n`;
+
+  for(let i=0; i<labels.length; i++){
+    csv += `"${labels[i]}",${isNaN(d1[i]) ? '' : d1[i]},${isNaN(d2[i]) ? '' : d2[i]}\n`;
+  }
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'chart_export.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+
+/* ----------------- Socket / connection logging ----------------- */
+socket.on('connect', () => { socketConnected = true; feedbackAdd('Socket connected'); requestPorts(); });
+socket.on('disconnect', (reason) => { socketConnected = false; feedbackAdd('Socket disconnected: ' + (reason||'unknown')); });
+socket.on('connect_error', (err) => { feedbackAdd('Socket connect error: ' + String(err)); });
+
+/* ----------------- Expand chart (open in new tab) ----------------- */
+document.getElementById('expandChartBtn').addEventListener('click', () => {
+  const win = window.open('/chart?key=' + sessionKey, '_blank');
+  if (win) openedWindows.push(win);
+});
+
+/* ----------------- Expand video (open in new tab) ----------------- */
+document.getElementById('expandVideoBtn').addEventListener('click', () => {
+  const win = window.open('/camera?key=' + sessionKey, '_blank');
+  if (win) openedWindows.push(win);
+});
+
+/* ----------------- Pause chart ----------------- */
+pauseChartBtn.addEventListener('click', () => { running = !running; pauseChartBtn.innerText = running ? 'Pause Chart' : 'Resume Chart'; });
+
+/* Try load saved layout on start (non-blocking) */
+window.addEventListener('load', () => {
+  // Set video feed dynamically
+  document.getElementById('videoFeed').src = videoUrl;
+  
+  const raw = localStorage.getItem('evl_layout'); if(raw){ try{ const arr = JSON.parse(raw); dynamicControls.innerHTML=''; arr.forEach(cfg=>createControlElement(cfg)); }catch(e){} }
+});
+
+const videoFeed = document.getElementById('videoFeed');
+const toggleVideoBtn = document.getElementById('toggleVideo');
+toggleVideoBtn.addEventListener('click', () => {
+  if(videoFeed.style.display === 'none'){
+    videoFeed.style.display = 'block';
+    toggleVideoBtn.innerText = 'Video OFF';
+  } else {
+    videoFeed.style.display = 'none';
+    toggleVideoBtn.innerText = 'Video ON';
+  }
+});
+
+let audioPC = null;
+let audioStarting = false;
+
+async function startAudio() {
+    if (audioPC || audioStarting) return; // already started or starting
+    audioStarting = true;
+    const toggleBtn = document.getElementById('toggleAudio');
+    toggleBtn.disabled = true;
+    toggleBtn.innerText = 'Starting...';
+
+    try {
+        audioPC = new RTCPeerConnection();
+
+        audioPC.ontrack = (event) => {
+            document.getElementById('audioFeed').srcObject = event.streams[0];
+        };
+
+        audioPC.oniceconnectionstatechange = () => {
+            if (audioPC.iceConnectionState === 'failed' || audioPC.iceConnectionState === 'closed') {
+                console.log('Audio ICE connection failed or closed');
+                stopAudio();
+            }
+        };
+
+        audioPC.addTransceiver('audio', { direction: 'recvonly' });
+
+        const offer = await audioPC.createOffer();
+        await audioPC.setLocalDescription(offer);
+
+        // Use dynamic audio server URL
+        const response = await fetch(`${audioServerUrl}/offer`, {
+            method: 'POST',
+            body: JSON.stringify({
+                sdp: audioPC.localDescription.sdp,
+                type: audioPC.localDescription.type
+            }),
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const answer = await response.json();
+        await audioPC.setRemoteDescription(answer);
+
+        toggleBtn.disabled = false;
+        toggleBtn.innerText = 'Stop Audio';
+        audioStarting = false;
+    } catch (error) {
+        console.error('Failed to start audio:', error);
+        stopAudio();
+        audioStarting = false;
+        alert('Failed to start audio. Please check console for details.');
+    }
+}
+
+function stopAudio() {
+    if (audioPC) {
+        audioPC.close();
+        audioPC = null;
+    }
+    document.getElementById('audioFeed').srcObject = null;
+    const toggleBtn = document.getElementById('toggleAudio');
+    toggleBtn.disabled = false;
+    toggleBtn.innerText = 'Start Audio';
+}
+
+const audioFeed = document.getElementById('audioFeed');
+const toggleAudioBtn = document.getElementById('toggleAudio');
+toggleAudioBtn.addEventListener('click', () => {
+    if (audioPC || audioStarting) {
+        stopAudio();
+    } else {
+        startAudio();
+    }
+});
+
+/* ----------------- Video Zoom Controls ----------------- */
+const videoContainer = document.querySelector('.video-container');
+const zoomInBtn = document.getElementById('zoomIn');
+const zoomOutBtn = document.getElementById('zoomOut');
+const zoomResetBtn = document.getElementById('zoomReset');
+let currentZoom = 1;
+let panX = 0;
+let panY = 0;
+const minZoom = 0.5;
+const maxZoom = 5;
+const zoomStep = 0.1;
+
+function updateZoom() {
+  videoContainer.style.setProperty('--zoom-factor', currentZoom);
+  videoContainer.style.setProperty('--pan-x', panX + 'px');
+  videoContainer.style.setProperty('--pan-y', panY + 'px');
+}
+
+zoomResetBtn.addEventListener('click', () => {
+  currentZoom = 1;
+  panX = 0;
+  panY = 0;
+  updateZoom();
+});
+
+zoomInBtn.addEventListener('click', () => {
+  if (currentZoom < maxZoom) {
+    currentZoom += zoomStep;
+    updateZoom();
+  }
+});
+
+zoomOutBtn.addEventListener('click', () => {
+  if (currentZoom > minZoom) {
+    currentZoom -= zoomStep;
+    updateZoom();
+  }
+});
+
+videoContainer.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (e.deltaY < 0) {
+    // Zoom in
+    if (currentZoom < maxZoom) {
+      currentZoom += zoomStep;
+      updateZoom();
+    }
+  } else {
+    // Zoom out
+    if (currentZoom > minZoom) {
+      currentZoom -= zoomStep;
+      updateZoom();
+    }
+  }
+});
+
+// Dragging/panning functionality
+let isDragging = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
+
+videoContainer.addEventListener('mousedown', (e) => {
+  if (currentZoom > 1) { // Only allow dragging when zoomed in
+    isDragging = true;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+    videoContainer.style.cursor = 'grabbing';
+    e.preventDefault();
+  }
+});
+
+videoContainer.addEventListener('mousemove', (e) => {
+  if (isDragging && currentZoom > 1) {
+    const deltaX = e.clientX - lastMouseX;
+    const deltaY = e.clientY - lastMouseY;
+    panX += deltaX;
+    panY += deltaY;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+    updateZoom();
+  }
+});
+
+videoContainer.addEventListener('mouseup', () => {
+  isDragging = false;
+  videoContainer.style.cursor = currentZoom > 1 ? 'grab' : 'default';
+});
+
+videoContainer.addEventListener('mouseleave', () => {
+  isDragging = false;
+  videoContainer.style.cursor = currentZoom > 1 ? 'grab' : 'default';
+});
+
+/* ----------------- Chart Zoom Controls ----------------- */
+const chartZoomInBtn = document.getElementById('chartZoomIn');
+const chartZoomOutBtn = document.getElementById('chartZoomOut');
+const chartZoomResetBtn = document.getElementById('chartZoomReset');
+
+chartZoomResetBtn.addEventListener('click', () => {
+  chart.resetZoom();
+});
+
+chartZoomInBtn.addEventListener('click', () => {
+  chart.zoom(1.1);
+});
+
+chartZoomOutBtn.addEventListener('click', () => {
+  chart.zoom(0.9);
+});
+
+/* ----------------- Main Page Scaling Controls ----------------- */
+let mainIsAutoScaling = true;
+
+function mainUpdateScaling() {
+  if (mainIsAutoScaling) {
+    delete chart.options.scales.y.max;
+    delete chart.options.scales.y1.max;
+  } else {
+    chart.options.scales.y.max = Number(document.getElementById('mainY1Max').value);
+    chart.options.scales.y1.max = Number(document.getElementById('mainY2Max').value);
+  }
+  chart.update();
+}
+
+document.getElementById('mainScalingToggle').addEventListener('click', () => {
+  mainIsAutoScaling = !mainIsAutoScaling;
+  document.getElementById('mainScalingToggle').textContent = mainIsAutoScaling ? 'Auto' : 'Manual';
+  document.getElementById('mainManualControls').style.display = mainIsAutoScaling ? 'none' : 'flex';
+  mainUpdateScaling();
+});
+
+document.getElementById('mainY1Max').addEventListener('input', mainUpdateScaling);
+document.getElementById('mainY2Max').addEventListener('input', mainUpdateScaling);
+
+document.getElementById('mainY1Plus').addEventListener('click', () => {
+  const input = document.getElementById('mainY1Max');
+  input.value = Number(input.value) + 10;
+  mainUpdateScaling();
+});
+
+document.getElementById('mainY1Minus').addEventListener('click', () => {
+  const input = document.getElementById('mainY1Max');
+  input.value = Math.max(0, Number(input.value) - 10);
+  mainUpdateScaling();
+});
+
+document.getElementById('mainY2Plus').addEventListener('click', () => {
+  const input = document.getElementById('mainY2Max');
+  input.value = Number(input.value) + 10;
+  mainUpdateScaling();
+});
+
+document.getElementById('mainY2Minus').addEventListener('click', () => {
+  const input = document.getElementById('mainY2Max');
+  input.value = Math.max(0, Number(input.value) - 10);
+  mainUpdateScaling();
+});
+
+// Power saving pop-up
+const powerSavePopup = document.createElement('div');
+powerSavePopup.id = 'powerSavePopup';
+powerSavePopup.style.cssText = `
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #1c1c2b;
+  color: #e0e0e0;
+  padding: 24px;
+  border-radius: 10px;
+  border: 2px solid #00f0ff;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
+  z-index: 10000;
+  text-align: center;
+  font-size: 18px;
+  max-width: 400px;
+`;
+powerSavePopup.innerHTML = `
+  <h2 style="color: #ff6b6b; margin: 0 0 16px 0;">⚠️ Power Saving Alert</h2>
+  <p style="margin: 0 0 24px 0;">Your session duration is very short (less than 5 seconds). The power supply will be automatically turned off to prevent unnecessary power waste.</p>
+  <button onclick="document.getElementById('powerSavePopup').style.display = 'none'" 
+          style="padding: 10px 20px; background: #00f0ff; color: #041726; border: none; border-radius: 6px; font-weight: 700; cursor: pointer;">
+    OK
+  </button>
+`;
+document.body.appendChild(powerSavePopup);
+
+if (!sessionKey) {
+  document.body.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100vh; background:#1c1c2b; color:#e0e0e0; font-size:2em;">Invalid Session. Please book a slot from the homepage.</div><button onclick="window.location.href=\'/\'" style="padding:10px 20px; background:#00f0ff; color:#041726; border:none; border-radius:6px; font-weight:700;">Go to Homepage</button>';
+} else {
+  // Check if session is already completed
+  const sessionStatus = localStorage.getItem('sessionStatus_' + sessionKey);
+  if (sessionStatus === 'COMPLETED') {
+    document.getElementById('sessionClosed').style.display = 'flex';
+    document.querySelector('.container').style.display = 'none';
+    document.querySelector('.header-bar').style.display = 'none';
+  } else {
+    // Use shared session end time
+    let sessionEndTime = localStorage.getItem('sessionEndTime_' + sessionKey);
+    if (!sessionEndTime) {
+      // Use the session end time from server
+      sessionEndTime = sessionEndTimeFromServer;
+      localStorage.setItem('sessionEndTime_' + sessionKey, sessionEndTime);
+    }
+    sessionEndTime = parseInt(sessionEndTime);
+
+    // Check if session duration is less than 5 seconds
+    const sessionDurationMs = sessionEndTime - Date.now();
+    if (sessionDurationMs < 5000) {
+      // Show power saving pop-up
+      powerSavePopup.style.display = 'block';
+    }
+
+    function updateTimer() {
+      const now = Date.now();
+      const remaining = Math.max(0, sessionEndTime - now);
+      const minutes = Math.floor(remaining / 60000);
+      const seconds = Math.floor((remaining % 60000) / 1000);
+      document.getElementById('timer').innerText = `Time Left: ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+      if (remaining <= 0) {
+        // Session ended - close all windows and show overlay
+        localStorage.setItem('sessionStatus_' + sessionKey, 'COMPLETED');
+        document.getElementById('sessionClosed').style.display = 'flex';
+        document.querySelector('.container').style.display = 'none';
+        document.querySelector('.header-bar').style.display = 'none';
+
+        // Send request to server to remove session and turn off relay
+        fetch('/remove_session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_key: sessionKey })
+        });
+
+        // Close all opened windows
+        openedWindows.forEach(win => {
+          try {
+            if (win && !win.closed) {
+              win.close();
+            }
+          } catch (e) {
+            // Ignore errors when closing windows
+          }
+        });
+        openedWindows = [];
+
+        // Auto-close the main tab after showing the message for 3 seconds
+        setTimeout(() => {
+          window.close();
+        }, 3000);
+      } else {
+        setTimeout(updateTimer, 1000);
+      }
+    }
+    updateTimer();
+  }
+}
+
+// Set initial cursor style
+videoContainer.style.cursor = 'grab';
+</script>
+</body>
+</html>
