@@ -2005,13 +2005,14 @@ def lab_pi_register():
     data = request.get_json()
     
     # Validate required fields
-    required_fields = ['lab_pi_id', 'name']
+    required_fields = ['lab_pi_id']
     for field in required_fields:
         if field not in data:
             return jsonify({'error': f'Missing required field: {field}'}), 400
     
     lab_pi_id = data.get('lab_pi_id')
-    name = data.get('name')
+    # Accept 'name' or 'lab_pi_name' for backwards compatibility
+    name = data.get('name') or data.get('lab_pi_name', 'Unknown Lab Pi')
     mac_address = data.get('mac_address') or None  # Treat empty string as NULL
     ip_address = data.get('ip_address') or None
     hostname = data.get('hostname') or None
