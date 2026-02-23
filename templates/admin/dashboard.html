@@ -416,8 +416,8 @@
                     <i class="fas fa-hdd"></i>
                 </div>
                 <div class="stat-info">
-                    <h3>{{ devices|length }}</h3>
-                    <p>Devices</p>
+                    <h3>{{ online_devices + offline_devices + maintenance_devices }}</h3>
+                    <p>Devices ({{ online_devices }} online, {{ offline_devices }} offline)</p>
                 </div>
             </div>
         </div>

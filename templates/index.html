@@ -211,12 +211,10 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
       <h3>Live Video Feed</h3>
       <div class="video-container">
         <img id="videoFeed" alt="camera">
-    <audio id="audioFeed" autoplay></audio>
         <button id="expandVideoBtn" class="zoom-btn expand" title="Open Video in New Tab">[ ]</button>
         <button id="zoomReset" class="zoom-btn reset">■</button>
         <button id="zoomOut" class="zoom-btn minus">-</button>
         <button id="zoomIn" class="zoom-btn">+</button>
-        <button id="toggleAudio" class="toggle-btn">Start Audio</button>
         <button id="toggleVideo" class="small-toggle">Video OFF</button>
       </div>
       <div style="margin-top:8px;color:#9aaab4"></div>
@@ -281,8 +279,12 @@ let openedWindows = []; // Track opened windows for cleanup
 
 /* ----------------- POWER SUPPLY CONTROL ----------------- */
 let powerSupplyState = 'off'; // Initial state is OFF
+let powerButtonLocked = false; // Prevent rapid clicking
 
 powerSupplyBtn.addEventListener('click', async () => {
+  if (powerButtonLocked) return; // Prevent double-click
+  powerButtonLocked = true;
+  
   try {
     const newState = powerSupplyState === 'off' ? 'on' : 'off';
     const response = await fetch('/toggle_relay', {
@@ -306,6 +308,9 @@ powerSupplyBtn.addEventListener('click', async () => {
     }
   } catch (error) {
     feedbackAdd(`[power] Request failed: ${error}`);
+  } finally {
+    // Re-enable button after a short delay
+    setTimeout(() => { powerButtonLocked = false; }, 1000);
   }
 });
 
@@ -481,19 +486,19 @@ socket.on('serial_status', (info) => {
 /* handle raw feedback lines (we parse many formats here) */
 function parseLineToMap(line){
   // Flexible parsing for various key-value formats
-  // Accepts separators: ',', ';', and within pairs: ':', '=', '>', '<', ' ', '&', '|', etc.
+  // Accepts separators: ',', ';', '|', '/', '\\', and within pairs: ':', '=', '>', '<', ' ', '&', etc.
   // Handles multiple pairs per line, even without commas
   // Also handles single pair per line
   const out = {};
   if(!line || typeof line !== 'string') return out;
   // Remove timestamps (common when prefs append "15:22:33 " etc) by dropping leading time if it's like HH:MM:SS
   const trimmed = line.trim().replace(/^\d{1,2}:\d{2}:\d{2}\s*/, '');
-  // First, split on comma or semicolon to get potential pair groups
-  const pairGroups = trimmed.split(/[,;]/);
+  // First, split on common separators: comma, semicolon, pipe, slash, backslash
+  const pairGroups = trimmed.split(/[,;|\/\\]/);
   pairGroups.forEach(group => {
     if(!group.trim()) return;
     // Normalize separators within the group to spaces
-    const normalized = group.replace(/[:=>@#>^!$*~\\|+%-\s&|]+/g, ' ').trim();
+    const normalized = group.replace(/[:=>@#>^!$*~\\|+%-\s&|\/\\]+/g, ' ').trim();
     // Split into tokens
     const tokens = normalized.split(/\s+/);
     // Pair every two tokens as key value
@@ -527,7 +532,7 @@ socket.on('feedback', (line) => {
   // If this feedback line contains key/value pairs, parse and feed into sensor_data handler
   try {
     // quick check for presence of separators and at least one digit
-    if((text.includes(':') || text.includes('=') || text.includes('@') || text.includes(';') || text.includes(',')) && /\d/.test(text)){
+    if((text.includes(':') || text.includes('|') || text.includes('=') || text.includes('@') || text.includes(';') || text.includes(',') || text.includes('/') || text.includes('\\')) && /\d/.test(text)){
       const parsed = parseLineToMap(text);
       // Only emit if parsed contains at least one numeric value
       const hasNumeric = Object.values(parsed).some(v => typeof v === 'number' && !isNaN(v));
@@ -828,6 +833,9 @@ socket.on('sensor_data', (payload) => {
   numericKeys.forEach(k => {
     if(!knownSensorKeys.has(k)) knownSensorKeys.add(k);
   });
+
+  // Auto-create slider items in varDropdown for new variables
+  autoCreateSlidersFromSensors(numericKeys);
 
   // Update dropdown options
   updateYAxisFilterOptions(numericKeys);

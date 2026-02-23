@@ -203,9 +203,8 @@ def run_session_monitor():
                 
                 for session in expired_db_sessions:
                     session.status = 'EXPIRED'
-                    # Turn off relay for this session
-                    relay_off()
-                    print(f"DB Session {session.session_key} expired, relay turned off")
+                    # Don't turn off relay automatically - let user control it
+                    print(f"DB Session {session.session_key} expired")
                 
                 if expired_db_sessions:
                     db.session.commit()
@@ -344,9 +343,9 @@ def relay_off():
         return False
 
 # ---------- UTIL FUNCTIONS ----------
-# ---------- UTIL FUNCTIONS ----------
 def check_expired_sessions():
-    """Check for expired sessions and turn off relay if needed"""
+    """Check for expired sessions and remove them from active_sessions.
+    Does NOT control relay - relay should be controlled explicitly."""
     now = datetime.now()
     expired_keys = []
     
@@ -354,11 +353,9 @@ def check_expired_sessions():
         expires_at = session_data.get('expires_at')
         if expires_at and now.timestamp() > expires_at:
             expired_keys.append(session_key)
-            # Turn off relay when session expires
-            relay_off()
-            print(f"Session {session_key} expired, relay turned off")
+            print(f"Session {session_key} expired, will be removed")
     
-    # Remove expired sessions
+    # Remove expired sessions (do NOT turn off relay here)
     for key in expired_keys:
         if key in active_sessions:
             del active_sessions[key]
@@ -541,14 +538,24 @@ def admin_dashboard():
     experiments = Experiment.query.all()
     bookings = Booking.query.all()
     devices = Device.query.all()
+    lab_pis = LabPi.query.all()
     sessions = Session.query.all()
+    
+    # Calculate online/offline/maintenance device counts from LabPi table
+    online_devices = sum(1 for d in lab_pis if d.status == 'ONLINE')
+    offline_devices = sum(1 for d in lab_pis if d.status == 'OFFLINE')
+    maintenance_devices = sum(1 for d in lab_pis if d.status == 'MAINTENANCE')
     
     return render_template('admin/dashboard.html', 
                          users=users, 
                          experiments=experiments, 
                          bookings=bookings, 
                          devices=devices,
-                         sessions=sessions)
+                         lab_pis=lab_pis,
+                         sessions=sessions,
+                         online_devices=online_devices,
+                         offline_devices=offline_devices,
+                         maintenance_devices=maintenance_devices)
 
 @app.route('/admin/devices', methods=['GET', 'POST'])
 @login_required
@@ -933,10 +940,10 @@ def view_analytics():
     # Calculate analytics
     now = datetime.utcnow()
     
-    # Devices by status
-    online_devices = Device.query.filter_by(status='ONLINE').count()
-    offline_devices = Device.query.filter_by(status='OFFLINE').count()
-    maintenance_devices = Device.query.filter_by(status='MAINTENANCE').count()
+    # Devices by status (from LabPi table)
+    online_devices = LabPi.query.filter_by(status='ONLINE').count()
+    offline_devices = LabPi.query.filter_by(status='OFFLINE').count()
+    maintenance_devices = LabPi.query.filter_by(status='MAINTENANCE').count()
     
     # Users by activity
     active_users = User.query.filter_by(active=True).count()
@@ -981,23 +988,23 @@ def view_analytics():
         start_of_day = day.replace(hour=0, minute=0, second=0, microsecond=0)
         end_of_day = day.replace(hour=23, minute=59, second=59, microsecond=999999)
         
-        # Device status counts for each day
-        day_online = Device.query.filter(
-            Device.last_seen >= start_of_day,
-            Device.last_seen <= end_of_day,
-            Device.status == 'ONLINE'
+        # Device status counts for each day (from LabPi table)
+        day_online = LabPi.query.filter(
+            LabPi.last_heartbeat >= start_of_day,
+            LabPi.last_heartbeat <= end_of_day,
+            LabPi.status == 'ONLINE'
         ).count()
         
-        day_offline = Device.query.filter(
-            Device.last_seen >= start_of_day,
-            Device.last_seen <= end_of_day,
-            Device.status == 'OFFLINE'
+        day_offline = LabPi.query.filter(
+            LabPi.last_heartbeat >= start_of_day,
+            LabPi.last_heartbeat <= end_of_day,
+            LabPi.status == 'OFFLINE'
         ).count()
         
-        day_maintenance = Device.query.filter(
-            Device.last_seen >= start_of_day,
-            Device.last_seen <= end_of_day,
-            Device.status == 'MAINTENANCE'
+        day_maintenance = LabPi.query.filter(
+            LabPi.last_heartbeat >= start_of_day,
+            LabPi.last_heartbeat <= end_of_day,
+            LabPi.status == 'MAINTENANCE'
         ).count()
         
         # User activity for each day
@@ -1392,10 +1399,14 @@ def experiment():
         status='ONLINE'
     ).first()
     
+    print(f"[EXPERIMENT] Looking for Lab Pi: experiment_id={booking.experiment_id}, found={lab_pi}")
+    
     # Notify Lab Pi to start session if found
     lab_pi_url = None
+    lab_pi_notified = False  # Track if Lab Pi was successfully notified
     if lab_pi:
-        lab_pi_url = f"http://localhost:5001"  # Always use localhost for same-machine communication
+        lab_pi_url = f"http://{request.host.split(':')[0]}:10000"  # Lab Pi runs on port 10000
+        print(f"[EXPERIMENT] Found Lab Pi: {lab_pi.lab_pi_id} at {lab_pi_url}")
         # Send command to Lab Pi to start session
         try:
             response = requests.post(
@@ -1408,7 +1419,8 @@ def experiment():
                 headers={'X-Lab-Pi-Id': lab_pi.lab_pi_id},
                 timeout=5
             )
-            print(f"Lab Pi notification response: {response.status_code}")
+            print(f"[EXPERIMENT] Lab Pi notification response: {response.status_code}")
+            lab_pi_notified = True  # Mark as successful
             # Update Lab Pi state
             lab_pi.current_session_key = session_key
             lab_pi.session_start_time = datetime.utcnow()
@@ -1441,7 +1453,12 @@ def experiment():
     duration = session.duration
     session_end_time = int(session.end_time.timestamp() * 1000)
     
-    # Pass Lab Pi info to template
+    # If Lab Pi is available AND was successfully notified, redirect to Lab Pi's experiment page
+    if lab_pi and lab_pi_url and lab_pi_notified:
+        # Redirect to Lab Pi's experiment page on port 10000
+        return redirect(f"http://{request.host.split(':')[0]}:10000/experiment?key={session_key}")
+    
+    # Fallback: Pass Lab Pi info to template if Lab Pi not available or not notified
     return render_template('index.html', 
         session_duration=duration, 
         session_end_time=session_end_time,
@@ -1767,9 +1784,23 @@ def start_booking(booking_id):
 @app.route('/flash', methods=['POST'])
 @login_required
 def flash_firmware():
+    global ser, ser_stop, data_generator_thread
+    
     board = request.form.get('board', 'generic')
     port = request.form.get('port', '') or ''
     available_ports = list_serial_ports()
+    
+    # Disconnect serial if connected before flashing
+    with serial_lock:
+        if ser and ser.is_open:
+            try:
+                ser.close()
+                print(f"Serial port closed for flashing")
+            except Exception as e:
+                print(f"Error closing serial: {e}")
+    
+    # Stop the serial reader thread if running
+    ser_stop.set()
     
     # Validate port - don't use default if no ports available
     if not available_ports:
@@ -1996,6 +2027,33 @@ def serve_sop(filename):
 # LAB PI API ROUTES (Master Pi - handles Lab Pi registration and heartbeat)
 # ============================================================================
 
+@app.route('/api/booking/by-key/<session_key>', methods=['GET'])
+def get_booking_by_key(session_key):
+    """
+    Get booking details by session key. Used by Lab Pi to validate session.
+    """
+    booking = Booking.query.filter_by(session_key=session_key).first()
+    if not booking:
+        return jsonify({'error': 'Booking not found'}), 404
+    
+    # Check if booking is active
+    now = datetime.now()
+    if not (booking.start_time <= now <= booking.end_time):
+        return jsonify({'error': 'Booking expired'}), 400
+    
+    if booking.status not in ['CONFIRMED', 'IN_PROGRESS']:
+        return jsonify({'error': 'Booking not active'}), 400
+    
+    return jsonify({
+        'booking_id': booking.id,
+        'session_key': booking.session_key,
+        'experiment_name': booking.experiment.name if booking.experiment else 'Unknown',
+        'duration': int((booking.end_time - booking.start_time).total_seconds() // 60),
+        'start_time': booking.start_time.isoformat(),
+        'end_time': booking.end_time.isoformat(),
+        'status': booking.status
+    })
+
 @app.route('/api/lab-pi/register', methods=['POST'])
 def lab_pi_register():
     """
@@ -2117,8 +2175,9 @@ def lab_pi_heartbeat():
     if not lab_pi:
         return jsonify({'error': 'Lab Pi not registered'}), 404
     
-    # Update Lab Pi status
-    lab_pi.status = 'ONLINE'
+    # Update Lab Pi status - only set to ONLINE if not in maintenance mode
+    if lab_pi.status != 'MAINTENANCE':
+        lab_pi.status = 'ONLINE'
     lab_pi.last_heartbeat = datetime.utcnow()
     lab_pi.session_active = data.get('session_active', False)
     lab_pi.current_session_key = data.get('session_key')
@@ -2133,7 +2192,7 @@ def lab_pi_heartbeat():
     lab_pi.battery_soc = data.get('battery_soc')
     lab_pi.battery_voltage = data.get('battery_voltage')
     lab_pi.battery_ac_status = data.get('battery_ac_status')
-    lab_pi.battery_charging = data.get('battery_charging')
+    lab_pi.battery_charging = data.get('battery_charging') or data.get('battery_status')
     
     # Log heartbeat
     heartbeat_log = LabPiHeartbeat(
@@ -2202,7 +2261,8 @@ def lab_pi_session_end():
     # Update session in database if exists
     session = Session.query.filter_by(session_key=session_key).first()
     if session:
-        session.status = 'EXPIRED' if reason == 'expired' else 'TERMINATED'
+        # Mark as COMPLETED when user finished normally, EXPIRED only when time ran out
+        session.status = 'COMPLETED' if reason == 'completed' else ('EXPIRED' if reason == 'expired' else 'TERMINATED')
         session.end_time = datetime.utcnow()
         db.session.commit()
         
@@ -2267,7 +2327,16 @@ def lab_pi_list():
         'experiment_id': lp.experiment_id,
         'experiment_name': lp.experiment.name if lp.experiment else None,
         'last_heartbeat': lp.last_heartbeat.isoformat() if lp.last_heartbeat else None,
-        'session_active': lp.current_session_key is not None
+        'session_active': lp.current_session_key is not None,
+        # System metrics
+        'cpu_usage': lp.cpu_usage,
+        'ram_usage': lp.ram_usage,
+        'temperature': lp.temperature,
+        # Battery metrics
+        'battery_soc': lp.battery_soc,
+        'battery_voltage': lp.battery_voltage,
+        'battery_ac_status': lp.battery_ac_status,
+        'battery_charging': lp.battery_charging
     } for lp in lab_pis])
 
 
@@ -2496,7 +2565,7 @@ def serial_reader_worker(serial_obj):
 
             if any(sep in text for sep in [':', '=', '@', '>', '#', '^', '!', '$', '*', '%', '~', '\\', '|', '+', '-', ';', ',']) and any(c.isdigit() for c in text):
                 trimmed = re.sub(r'^\d{1,2}:\d{2}:\d{2}\s*', '', text.strip())
-                pairGroups = re.split(r'[,;]', trimmed)
+                pairGroups = re.split(r'[,;|/\\]', trimmed)
                 data = {}
                 for group in pairGroups:
                     if not group.strip():
