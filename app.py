@@ -1086,7 +1086,10 @@ def update_system_metrics():
                         
                         # If GPIO not available (UNKNOWN), read from UPS log file
                         if ac_status_str == "UNKNOWN":
-                            log_file = "/home/abhi/virtual_lab/ups_log.csv"
+                            # Check both admin-pi and lab-pi locations
+                            base_dir = os.path.dirname(os.path.abspath(__file__))
+                            project_name = os.path.basename(base_dir)
+                            log_file = f"/home/{os.environ.get('USER', 'abhi')}/{project_name}/ups_log.csv"
                             if os.path.exists(log_file):
                                 with open(log_file, 'r') as f:
                                     lines = f.readlines()
@@ -1380,12 +1383,20 @@ def experiment():
     # Check if there's a session entry, create if not
     session = Session.query.filter_by(session_key=session_key).first()
     if not session:
+        # Calculate session duration from booking
+        session_duration_minutes = (booking.end_time - booking.start_time).total_seconds() // 60
+        # Use UTC time for consistency with JavaScript Date.now()
+        session_start = datetime.utcnow()
+        session_end = session_start + timedelta(minutes=session_duration_minutes)
+        
+        print(f"[Session] Creating session: duration={session_duration_minutes} min, start={session_start}, end={session_end}")
+        
         session = Session(
             booking_id=booking.id,
             user_id=current_user.id,
             session_key=booking.session_key,
-            duration=(booking.end_time - booking.start_time).total_seconds() // 60,
-            end_time=booking.end_time,
+            duration=session_duration_minutes,
+            end_time=session_end,
             ip_address=request.remote_addr,
             status='ACTIVE'
         )
@@ -1414,7 +1425,8 @@ def experiment():
                 json={
                     'session_key': session_key,
                     'booking_id': booking.id,
-                    'user_email': current_user.email
+                    'user_email': current_user.email,
+                    'session_end_time': int(booking.end_time.timestamp() * 1000)  # JS milliseconds
                 },
                 headers={'X-Lab-Pi-Id': lab_pi.lab_pi_id},
                 timeout=5
@@ -1453,10 +1465,14 @@ def experiment():
     duration = session.duration
     session_end_time = int(session.end_time.timestamp() * 1000)
     
+    print(f"[Experiment] Session end time: {session_end_time}, booking end_time: {session.end_time}, duration: {duration}")
+    
     # If Lab Pi is available AND was successfully notified, redirect to Lab Pi's experiment page
     if lab_pi and lab_pi_url and lab_pi_notified:
-        # Redirect to Lab Pi's experiment page on port 10000
-        return redirect(f"http://{request.host.split(':')[0]}:10000/experiment?key={session_key}")
+        # Redirect to Lab Pi's experiment page on port 10000, passing session_end_time as fallback
+        redirect_url = f"http://{request.host.split(':')[0]}:10000/experiment?key={session_key}&end_time={session_end_time}"
+        print(f"[Experiment] Redirecting to Lab Pi: {redirect_url}")
+        return redirect(redirect_url)
     
     # Fallback: Pass Lab Pi info to template if Lab Pi not available or not notified
     return render_template('index.html', 

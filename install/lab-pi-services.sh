@@ -21,7 +21,8 @@ echo -e "${BLUE}Lab Pi Services Setup${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
-PROJECT_DIR="/home/abhi/admin-pi"
+# Get the project directory - works with any username
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then

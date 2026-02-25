@@ -1,0 +1,14 @@
+[Unit]
+Description=DFRobot UPS Monitor Service
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=%h/admin-pi
+ExecStart=/usr/bin/python3 %h/admin-pi/dfrobot_ups.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

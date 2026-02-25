@@ -1,0 +1,19 @@
+[Unit]
+Description=Virtual Lab - Audio Stream Service
+After=network.target sound.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=%h/admin-pi
+ExecStart=/usr/bin/python3 %h/admin-pi/Audio/server.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

@@ -225,6 +225,9 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
 <script>
 const sessionDuration = {{ session_duration | tojson }};
 const sessionEndTimeFromServer = {{ session_end_time | tojson }};
+console.log('[DEBUG] sessionDuration:', sessionDuration);
+console.log('[DEBUG] sessionEndTimeFromServer:', sessionEndTimeFromServer);
+console.log('[DEBUG] Date.now():', Date.now());
 </script>
 
 <script>
@@ -1114,13 +1117,15 @@ function stopAudio() {
 
 const audioFeed = document.getElementById('audioFeed');
 const toggleAudioBtn = document.getElementById('toggleAudio');
-toggleAudioBtn.addEventListener('click', () => {
+if (toggleAudioBtn) {
+  toggleAudioBtn.addEventListener('click', () => {
     if (audioPC || audioStarting) {
-        stopAudio();
+      stopAudio();
     } else {
-        startAudio();
+      startAudio();
     }
-});
+  });
+}
 
 /* ----------------- Video Zoom Controls ----------------- */
 const videoContainer = document.querySelector('.video-container');
@@ -1349,6 +1354,21 @@ if (!sessionKey) {
         document.getElementById('sessionClosed').style.display = 'flex';
         document.querySelector('.container').style.display = 'none';
         document.querySelector('.header-bar').style.display = 'none';
+
+        // Auto-expand chart and video before closing
+        try {
+          const expandChartBtn = document.getElementById('expandChartBtn');
+          if (expandChartBtn) {
+            expandChartBtn.click();
+          }
+        } catch (e) { console.log('Auto expand chart error:', e); }
+        
+        try {
+          const expandVideoBtn = document.getElementById('expandVideoBtn');
+          if (expandVideoBtn) {
+            expandVideoBtn.click();
+          }
+        } catch (e) { console.log('Auto expand video error:', e); }
 
         // Send request to server to remove session and turn off relay
         fetch('/remove_session', {

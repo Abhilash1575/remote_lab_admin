@@ -175,9 +175,21 @@ case "$OS" in
 esac
 
 # ============================================================================
-# Step 8: Create Systemd Service
+# Step 8: Install DFRobot UPS (Optional - for Raspberry Pi with UPS HAT)
 # ============================================================================
-echo -e "${YELLOW}Step 8: Creating systemd service...${NC}"
+echo -e "${YELLOW}Step 8: Installing DFRobot UPS support...${NC}"
+
+if [ -f "$PROJECT_DIR/install/rpi_dfrobot_ups_all_in_one.sh" ]; then
+    echo "Running UPS installation..."
+    bash "$PROJECT_DIR/install/rpi_dfrobot_ups_all_in_one.sh"
+else
+    echo -e "${YELLOW}UPS installation script not found, skipping...${NC}"
+fi
+
+# ============================================================================
+# Step 9: Create Systemd Service
+# ============================================================================
+echo -e "${YELLOW}Step 9: Creating systemd service...${NC}"
 
 sudo tee /etc/systemd/system/vlab-admin.service > /dev/null << EOF
 [Unit]
@@ -201,7 +213,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable vlab-admin.service
 
 # ============================================================================
-# Step 9: Final Summary
+# Step 10: Final Summary
 # ============================================================================
 echo ""
 echo -e "${GREEN}========================================${NC}"
