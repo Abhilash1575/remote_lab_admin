@@ -192,7 +192,7 @@ def run_session_monitor():
         try:
             with app.app_context():
                 # Check and cleanup expired sessions
-                check_expired_sessions()
+                expired_keys = check_expired_sessions()
                 
                 # Also check database sessions that might have expired
                 now = datetime.now()
@@ -203,12 +203,26 @@ def run_session_monitor():
                 
                 for session in expired_db_sessions:
                     session.status = 'EXPIRED'
-                    # Don't turn off relay automatically - let user control it
-                    print(f"DB Session {session.session_key} expired")
+                    # Turn off relay when session expires
+                    session_key = session.session_key
+                    if session_key in active_sessions:
+                        del active_sessions[session_key]
+                    
+                    # Update the associated booking status to COMPLETED
+                    if session.booking:
+                        session.booking.status = 'COMPLETED'
+                        session.booking.completed_at = datetime.now()
+                    
+                    print(f"DB Session {session_key} expired, relay turned off, booking marked as COMPLETED")
+                    relay_off()
                 
                 if expired_db_sessions:
                     db.session.commit()
                 
+                # Safety check: turn off relay if no active sessions exist
+                if not active_sessions:
+                    relay_off()
+                    
         except Exception as e:
             print(f"Error in session monitor: {e}")
         
@@ -345,7 +359,7 @@ def relay_off():
 # ---------- UTIL FUNCTIONS ----------
 def check_expired_sessions():
     """Check for expired sessions and remove them from active_sessions.
-    Does NOT control relay - relay should be controlled explicitly."""
+    Turns off relay when sessions expire."""
     now = datetime.now()
     expired_keys = []
     
@@ -353,12 +367,17 @@ def check_expired_sessions():
         expires_at = session_data.get('expires_at')
         if expires_at and now.timestamp() > expires_at:
             expired_keys.append(session_key)
-            print(f"Session {session_key} expired, will be removed")
+            print(f"Session {session_key} expired, will be removed and relay turned off")
     
-    # Remove expired sessions (do NOT turn off relay here)
+    # Remove expired sessions and turn off relay
     for key in expired_keys:
         if key in active_sessions:
             del active_sessions[key]
+            relay_off()
+    
+    # Safety check: turn off relay if no active sessions exist
+    if not active_sessions:
+        relay_off()
     
     return expired_keys
 
@@ -1340,7 +1359,11 @@ def index():
             elif booking.status == 'IN_PROGRESS':
                 # Calculate duration from start and end time
                 duration = (booking.end_time - booking.start_time).total_seconds() // 60
-                if booking.started_at and now > booking.started_at + timedelta(minutes=duration):
+                # Mark as COMPLETED if end_time has passed OR if started_at + duration has passed
+                if now > booking.end_time:
+                    booking.status = 'COMPLETED'
+                    booking.completed_at = datetime.now()
+                elif booking.started_at and now > booking.started_at + timedelta(minutes=duration):
                     booking.status = 'COMPLETED'
                     booking.completed_at = datetime.now()
         
@@ -1378,7 +1401,7 @@ def experiment():
     # Check if booking is active (using naive datetime for simplicity)
     now = datetime.now()
     if not (booking.start_time <= now <= booking.end_time):
-        return render_template('expired_session.html')
+        return redirect(url_for('index'))
     
     # Check if there's a session entry, create if not
     session = Session.query.filter_by(session_key=session_key).first()
@@ -1542,9 +1565,16 @@ def chart():
     # Check if session is valid (either in active_sessions or in database)
     session_valid = False
     
-    # First check active sessions dictionary
+    # First check active sessions dictionary - verify it's not expired
     if session_key in active_sessions:
-        session_valid = True
+        session_data = active_sessions[session_key]
+        expires_at = session_data.get('expires_at')
+        if expires_at and datetime.now().timestamp() > expires_at:
+            # Session expired, remove it and turn off relay
+            del active_sessions[session_key]
+            relay_off()
+        else:
+            session_valid = True
     else:
         # Check database for active session
         booking = Booking.query.filter_by(session_key=session_key).first()
@@ -1561,7 +1591,7 @@ def chart():
                 }
     
     if not session_valid:
-        return render_template('expired_session.html')
+        return redirect(url_for('index'))
     
     return render_template('chart.html')
 
@@ -1575,9 +1605,16 @@ def camera():
     # Check if session is valid (either in active_sessions or in database)
     session_valid = False
     
-    # First check active sessions dictionary
+    # First check active sessions dictionary - verify it's not expired
     if session_key in active_sessions:
-        session_valid = True
+        session_data = active_sessions[session_key]
+        expires_at = session_data.get('expires_at')
+        if expires_at and datetime.now().timestamp() > expires_at:
+            # Session expired, remove it and turn off relay
+            del active_sessions[session_key]
+            relay_off()
+        else:
+            session_valid = True
     else:
         # Check database for active session
         booking = Booking.query.filter_by(session_key=session_key).first()
@@ -1594,7 +1631,7 @@ def camera():
                 }
     
     if not session_valid:
-        return render_template('expired_session.html')
+        return redirect(url_for('index'))
     
     return render_template('camera.html')
 
