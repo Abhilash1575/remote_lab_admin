@@ -2366,6 +2366,45 @@ def lab_pi_get_status(lab_pi_id):
     })
 
 
+@app.route('/api/lab-pi/<lab_pi_id>/active-session', methods=['GET'])
+def lab_pi_active_session(lab_pi_id):
+    """
+    Simple polling endpoint for Lab Pi to check for active sessions.
+    Lab Pi should poll this every 5 seconds.
+    
+    Returns:
+    - status: "running" if there's an active booking, "stopped" otherwise
+    - session_key: the session key if running
+    - end_time: ISO format end time
+    - user_email: email of the user who booked
+    """
+    lab_pi = LabPi.query.filter_by(lab_pi_id=lab_pi_id).first()
+    if not lab_pi:
+        return jsonify({'error': 'Lab Pi not found'}), 404
+    
+    # Use local time to match booking times stored in local timezone
+    now = datetime.now()
+    
+    # Find active booking for this Lab Pi's experiment
+    if lab_pi.experiment_id:
+        active_booking = Booking.query.filter(
+            Booking.experiment_id == lab_pi.experiment_id,
+            Booking.status == 'ACTIVE',
+            Booking.start_time <= now,
+            Booking.end_time > now
+        ).first()
+        
+        if active_booking:
+            return jsonify({
+                'status': 'running',
+                'session_key': active_booking.session_key,
+                'end_time': active_booking.end_time.isoformat() + 'Z',
+                'user_email': active_booking.user.email if active_booking.user else None
+            })
+    
+    return jsonify({'status': 'stopped'})
+
+
 @app.route('/api/lab-pi/list', methods=['GET'])
 def lab_pi_list():
     """
