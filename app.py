@@ -13,6 +13,7 @@ import math
 import asyncio
 import string
 import secrets
+import requests
 from datetime import datetime, timedelta
 from flask import Flask, send_from_directory, request, jsonify, render_template, abort, flash, redirect, url_for
 from flask_socketio import SocketIO, emit
@@ -22,10 +23,12 @@ from werkzeug.utils import secure_filename
 
 # Import GPIO and Serial modules with fallback
 try:
+    # DISABLED GPIO - relay is controlled by lab-pi only
     import lgpio
-    RELAY_PIN = 26
+    RELAY_PIN = None  # Disabled - lab-pi controls relay
+    print("⚠️ GPIO disabled in admin-pi - lab-pi controls relay")
 except Exception as e:
-    print(f"lgpio import failed: {e}")
+    print(f"GPIO import error: {e}")
     lgpio = None
     RELAY_PIN = None
 
@@ -36,8 +39,7 @@ except Exception as e:
     serial = None
     list_ports = None
 
-import eventlet
-eventlet.monkey_patch()
+# Threading based async (no eventlet)
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -94,7 +96,7 @@ app.config['MAIL_USERNAME'] = 'your-email@gmail.com'
 app.config['MAIL_PASSWORD'] = 'your-app-password'
 app.config['MAIL_DEFAULT_SENDER'] = 'your-email@gmail.com'
 
-socketio = SocketIO(app, async_mode='eventlet')
+socketio = SocketIO(app, async_mode='threading')
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 login_manager.login_message_category = 'info'
@@ -185,9 +187,19 @@ with app.app_context():
 # Global active sessions for authorization
 active_sessions = {}
 
+server_ready = False
+
 # Background task for checking expired sessions
 def run_session_monitor():
     """Background task to monitor and clean up expired sessions"""
+    global server_ready
+    
+    # Wait for server to be ready before using GPIO
+    print("Session monitor waiting for server to be ready...")
+    while not server_ready:
+        time.sleep(0.5)
+    print("Session monitor ready - will check for expired sessions")
+    
     while True:
         try:
             with app.app_context():
@@ -304,57 +316,56 @@ ser_stop = threading.Event()
 data_generator_thread = None
 
 # ---------- RELAY CONTROL ----------
+import threading
+gpio_lock = threading.Lock()
 gpio_handle = None
 
+gpio_initialized = False
+
 def init_gpio():
-    global gpio_handle
+    global gpio_handle, gpio_initialized
     if lgpio is None or RELAY_PIN is None:
         return False
-    try:
-        if gpio_handle is None:
-            gpio_handle = lgpio.gpiochip_open(0)
-            try:
+    with gpio_lock:
+        try:
+            if gpio_handle is None:
+                gpio_handle = lgpio.gpiochip_open(0)
                 lgpio.gpio_claim_output(gpio_handle, RELAY_PIN)
-            except Exception as e:
-                # If GPIO is already claimed, try to release and re-claim
-                if "GPIO busy" in str(e):
-                    print("GPIO already in use, trying to release and re-claim...")
-                    try:
-                        lgpio.gpio_free(gpio_handle, RELAY_PIN)
-                        lgpio.gpio_claim_output(gpio_handle, RELAY_PIN)
-                    except Exception as e2:
-                        print(f"Failed to re-claim GPIO: {e2}")
-                        gpio_handle = None
-                        return False
-                else:
-                    raise e
-        return True
-    except Exception as e:
-        print(f"Error initializing GPIO: {e}")
-        gpio_handle = None
-        return False
+                gpio_initialized = True
+                print(f"GPIO initialized on pin {RELAY_PIN}")
+            return True
+        except Exception as e:
+            print(f"Error initializing GPIO: {e}")
+            gpio_handle = None
+            return False
 
 def relay_on():
+    """Turn relay ON"""
     if not init_gpio():
+        print("Error: Failed to initialize GPIO for relay ON")
         return False
-    try:
-        lgpio.gpio_write(gpio_handle, RELAY_PIN, 0)
-        print("Relay ON")
-        return True
-    except Exception as e:
-        print(f"Error turning relay ON: {e}")
-        return False
+    with gpio_lock:
+        try:
+            lgpio.gpio_write(gpio_handle, RELAY_PIN, 0)  # LOW = relay ON
+            print("Relay ON")
+            return True
+        except Exception as e:
+            print(f"Error turning relay ON: {e}")
+            return False
 
 def relay_off():
+    """Turn relay OFF"""
     if not init_gpio():
+        print("Error: Failed to initialize GPIO for relay OFF")
         return False
-    try:
-        lgpio.gpio_write(gpio_handle, RELAY_PIN, 1)
-        print("Relay OFF")
-        return True
-    except Exception as e:
-        print(f"Error turning relay OFF: {e}")
-        return False
+    with gpio_lock:
+        try:
+            lgpio.gpio_write(gpio_handle, RELAY_PIN, 1)  # HIGH = relay OFF
+            print("Relay OFF")
+            return True
+        except Exception as e:
+            print(f"Error turning relay OFF: {e}")
+            return False
 
 # ---------- UTIL FUNCTIONS ----------
 def check_expired_sessions():
@@ -1439,7 +1450,9 @@ def experiment():
     lab_pi_url = None
     lab_pi_notified = False  # Track if Lab Pi was successfully notified
     if lab_pi:
-        lab_pi_url = f"http://{request.host.split(':')[0]}:10000"  # Lab Pi runs on port 10000
+        # Use the Lab Pi's actual IP address from database
+        lab_pi_ip = lab_pi.ip_address if lab_pi.ip_address else request.host.split(':')[0]
+        lab_pi_url = f"http://{lab_pi_ip}:10000"  # Lab Pi runs on port 10000
         print(f"[EXPERIMENT] Found Lab Pi: {lab_pi.lab_pi_id} at {lab_pi_url}")
         # Send command to Lab Pi to start session
         try:
@@ -1492,8 +1505,8 @@ def experiment():
     
     # If Lab Pi is available AND was successfully notified, redirect to Lab Pi's experiment page
     if lab_pi and lab_pi_url and lab_pi_notified:
-        # Redirect to Lab Pi's experiment page on port 10000, passing session_end_time as fallback
-        redirect_url = f"http://{request.host.split(':')[0]}:10000/experiment?key={session_key}&end_time={session_end_time}"
+        # Redirect to Lab Pi's experiment page using the correct IP, passing session_end_time as fallback
+        redirect_url = f"http://{lab_pi.ip_address}:10000/experiment?key={session_key}&end_time={session_end_time}"
         print(f"[Experiment] Redirecting to Lab Pi: {redirect_url}")
         return redirect(redirect_url)
     
@@ -1543,17 +1556,39 @@ def toggle_relay():
     
     # Check if session is valid
     if session_key not in active_sessions:
-        relay_off()  # Ensure relay is off for invalid/expired session
-        return jsonify({'status': 'error', 'message': 'Invalid session'}), 400
+        # Call lab-pi to turn off relay
+        try:
+            requests.post('http://localhost:10000/toggle_relay', 
+                        json={'state': 'off', 'session_key': session_key}, timeout=2)
+        except:
+            pass
+        return jsonify({'status': 'error', 'message': 'Invalid or expired session'}), 400
     
-    if state == 'on':
-        success = relay_on()
-        return jsonify({'status': 'on' if success else 'error'})
-    elif state == 'off':
-        success = relay_off()
-        return jsonify({'status': 'off' if success else 'error'})
-    else:
-        return jsonify({'status': 'error', 'message': 'Invalid state'}), 400
+    # Forward relay control to lab-pi (which controls the actual GPIO)
+    try:
+        response = requests.post('http://localhost:10000/toggle_relay', 
+                               json={'state': state, 'session_key': session_key}, timeout=5)
+        result = response.json()
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error calling lab-pi relay: {e}")
+        return jsonify({'status': 'error', 'message': f'Failed to control relay: {str(e)}'})
+
+# Debug endpoint to test relay without session
+@app.route('/test_relay', methods=['POST'])
+def test_relay():
+    """Test endpoint to toggle relay - calls lab-pi API"""
+    data = request.get_json()
+    state = data.get('state')
+    
+    # Forward to lab-pi
+    try:
+        response = requests.post('http://localhost:10000/toggle_relay', 
+                               json={'state': state, 'session_key': 'test'}, timeout=5)
+        result = response.json()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/chart')
 @login_required
@@ -1878,10 +1913,10 @@ def flash_firmware():
 
     # Improved flashing commands with proper options for reliability
     # Key fixes: add baud rate, flash_size detect, and --after hard_reset
-    # Updated for esptool v5.x syntax (write-flash instead of write_flash)
+    # Use esptool.py directly (pip installed) instead of python3 -m esptool to avoid apt conflict
     commands = {
-        'esp32': f"python3 -m esptool --chip esp32 --port {port} --baud 921600 write-flash 0x10000 {dest}",
-        'esp8266': f"python3 -m esptool --chip esp8266 --port {port} --baud 921600 write-flash 0x00000 {dest}",
+        'esp32': f"esptool.py --chip esp32 --port {port} --baud 921600 write_flash 0x10000 {dest}",
+        'esp8266': f"esptool.py --chip esp8266 --port {port} --baud 921600 write_flash 0x00000 {dest}",
         'arduino': f"avrdude -v -p atmega328p -c arduino -P {port} -b115200 -D -U flash:w:{dest}:{ 'i' if file_ext == '.hex' else 'r' }",
         'attiny': f"avrdude -v -p attiny85 -c usbasp -P {port} -U flash:w:{dest}:{ 'i' if file_ext == '.hex' else 'r' }",
         'stm32': f"openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c \"program {dest} 0x08000000 verify reset exit\"",
@@ -2050,10 +2085,10 @@ def factory_reset():
     # Determine firmware file type based on extension
     file_ext = os.path.splitext(fname)[1].lower()
 
-    # Improved commands with proper options (esptool v5.x syntax)
+    # Use esptool.py directly (pip installed) instead of python3 -m esptool to avoid apt conflict
     commands = {
-        'esp32': f"python3 -m esptool --chip esp32 --port {port} --baud 921600 write-flash 0x10000 {fpath}",
-        'esp8266': f"python3 -m esptool --chip esp8266 --port {port} --baud 921600 write-flash 0x00000 {fpath}",
+        'esp32': f"esptool.py --chip esp32 --port {port} --baud 921600 write_flash 0x10000 {fpath}",
+        'esp8266': f"esptool.py --chip esp8266 --port {port} --baud 921600 write_flash 0x00000 {fpath}",
         'arduino': f"avrdude -v -p atmega328p -c arduino -P {port} -b115200 -D -U flash:w:{fpath}:{ 'i' if file_ext == '.hex' else 'r' }",
         'attiny': f"avrdude -v -p attiny85 -c usbasp -P {port} -U flash:w:{fpath}:{ 'i' if file_ext == '.hex' else 'r' }",
         'stm32': f"openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c \"program {fpath} 0x08000000 verify reset exit\"",
@@ -2265,10 +2300,28 @@ def lab_pi_heartbeat():
     response_data = {'success': True}
     
     # Find active booking for this Lab Pi's experiment
+    # Check 'ACTIVE', 'IN_PROGRESS', and 'UPCOMING' (if within time window) statuses
     if lab_pi.experiment_id:
+        now = datetime.utcnow()
+        
+        # First, update any UPCOMING bookings that are now within the time window
+        upcoming_bookings = Booking.query.filter(
+            Booking.experiment_id == lab_pi.experiment_id,
+            Booking.status == 'UPCOMING',
+            Booking.start_time <= now,
+            Booking.end_time > now
+        ).all()
+        for booking in upcoming_bookings:
+            booking.status = 'ACTIVE'
+        if upcoming_bookings:
+            db.session.commit()
+        
+        # Now look for active bookings
         active_booking = Booking.query.filter(
             Booking.experiment_id == lab_pi.experiment_id,
-            Booking.status == 'ACTIVE'
+            Booking.status.in_(['ACTIVE', 'IN_PROGRESS']),
+            Booking.start_time <= now,
+            Booking.end_time > now
         ).first()
         
         if active_booking and active_booking.session_key != lab_pi.current_session_key:
@@ -2386,10 +2439,24 @@ def lab_pi_active_session(lab_pi_id):
     now = datetime.now()
     
     # Find active booking for this Lab Pi's experiment
+    # Check 'ACTIVE', 'IN_PROGRESS', and 'UPCOMING' (if within time window) statuses
     if lab_pi.experiment_id:
+        # First, update any UPCOMING bookings that are now within the time window
+        upcoming_bookings = Booking.query.filter(
+            Booking.experiment_id == lab_pi.experiment_id,
+            Booking.status == 'UPCOMING',
+            Booking.start_time <= now,
+            Booking.end_time > now
+        ).all()
+        for booking in upcoming_bookings:
+            booking.status = 'ACTIVE'
+        if upcoming_bookings:
+            db.session.commit()
+        
+        # Now look for active bookings
         active_booking = Booking.query.filter(
             Booking.experiment_id == lab_pi.experiment_id,
-            Booking.status == 'ACTIVE',
+            Booking.status.in_(['ACTIVE', 'IN_PROGRESS']),
             Booking.start_time <= now,
             Booking.end_time > now
         ).first()
@@ -2555,6 +2622,24 @@ def lab_pi_send_command(lab_pi_id):
         lab_pi.relay_state = True
         db.session.commit()
         
+        # Call lab-pi to start session and turn on relay
+        if lab_pi.ip_address:
+            try:
+                # Start session on lab-pi
+                requests.post(
+                    f"http://{lab_pi.ip_address}:10000/api/lab-pi/session-start",
+                    json={'session_key': session_key, 'booking_id': booking_id},
+                    timeout=5
+                )
+                # Turn on relay
+                requests.post(
+                    f"http://{lab_pi.ip_address}:10000/toggle_relay",
+                    json={'state': 'on', 'bypass': True},
+                    timeout=5
+                )
+            except Exception as e:
+                print(f"Error calling lab-pi: {e}")
+        
         return jsonify({
             'success': True,
             'message': f'Session {session_key} started on Lab Pi {lab_pi_id}'
@@ -2567,6 +2652,26 @@ def lab_pi_send_command(lab_pi_id):
         lab_pi.relay_state = False
         db.session.commit()
         
+        # Call lab-pi to end session and turn off relay
+        if lab_pi.ip_address:
+            try:
+                # Turn off relay
+                requests.post(
+                    f"http://{lab_pi.ip_address}:10000/toggle_relay",
+                    json={'state': 'off', 'bypass': True},
+                    timeout=5
+                )
+                # End session on lab-pi
+                session_key = lab_pi.current_session_key
+                if session_key:
+                    requests.post(
+                        f"http://{lab_pi.ip_address}:10000/api/lab-pi/session-end",
+                        json={'session_key': session_key},
+                        timeout=5
+                    )
+            except Exception as e:
+                print(f"Error calling lab-pi: {e}")
+        
         return jsonify({
             'success': True,
             'message': f'Session ended on Lab Pi {lab_pi_id}'
@@ -2575,11 +2680,39 @@ def lab_pi_send_command(lab_pi_id):
     elif command == 'power_on':
         lab_pi.relay_state = True
         db.session.commit()
+        
+        # Call lab-pi to turn on relay
+        if lab_pi.ip_address:
+            try:
+                response = requests.post(
+                    f"http://{lab_pi.ip_address}:10000/toggle_relay",
+                    json={'state': 'on', 'bypass': True},
+                    timeout=5
+                )
+                if response.status_code == 200:
+                    return jsonify({'success': True, 'message': 'Hardware power ON (relay activated on Lab Pi)'})
+            except Exception as e:
+                print(f"Error calling lab-pi toggle_relay: {e}")
+                return jsonify({'success': False, 'error': f'Failed to control relay: {str(e)}'})
         return jsonify({'success': True, 'message': 'Hardware power ON'})
     
     elif command == 'power_off':
         lab_pi.relay_state = False
         db.session.commit()
+        
+        # Call lab-pi to turn off relay
+        if lab_pi.ip_address:
+            try:
+                response = requests.post(
+                    f"http://{lab_pi.ip_address}:10000/toggle_relay",
+                    json={'state': 'off', 'bypass': True},
+                    timeout=5
+                )
+                if response.status_code == 200:
+                    return jsonify({'success': True, 'message': 'Hardware power OFF (relay deactivated on Lab Pi)'})
+            except Exception as e:
+                print(f"Error calling lab-pi toggle_relay: {e}")
+                return jsonify({'success': False, 'error': f'Failed to control relay: {str(e)}'})
         return jsonify({'success': True, 'message': 'Hardware power OFF'})
     
     return jsonify({'error': 'Unknown command'}), 400
@@ -2636,9 +2769,9 @@ def mock_data_generator():
                 'sensor4': round(sensor4, 2)
             }
             socketio.emit('sensor_data', payload)
-            eventlet.sleep(0.1)
-    except eventlet.greenlet.GreenletExit:
-        print("Mock data generator KILLED.")
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        print("Mock data generator stopped.")
     except Exception as e:
         print("Mock data generator error:", e)
 
@@ -2706,12 +2839,12 @@ def handle_connect_serial(data):
             if ser and ser.is_open:
                 ser.close()
             if data_generator_thread:
-                data_generator_thread.kill()
                 data_generator_thread = None
 
             ser = serial.Serial(port, baud, timeout=1)
             ser_stop.clear()
-            eventlet.spawn(serial_reader_worker, ser)
+            _thread = threading.Thread(target=serial_reader_worker, args=(ser,), daemon=True)
+            _thread.start()
             emit('serial_status', {'status': 'connected', 'port': port, 'baud': baud})
         except Exception as e:
             emit('serial_status', {'status': 'error', 'message': str(e)})
@@ -2725,7 +2858,8 @@ def handle_disconnect_serial():
             if ser and ser.is_open:
                 ser.close()
             if data_generator_thread is None:
-                data_generator_thread = eventlet.spawn(mock_data_generator)
+                data_generator_thread = threading.Thread(target=mock_data_generator, daemon=True)
+                data_generator_thread.start()
             emit('serial_status', {'status': 'disconnected'})
         except Exception as e:
             emit('serial_status', {'status': 'error', 'message': str(e)})
@@ -2800,7 +2934,11 @@ if __name__ == '__main__':
     # Start the Lab Pi heartbeat monitor
     start_lab_pi_heartbeat_monitor()
     
+    # Signal that server is ready for GPIO operations
+    server_ready = True
+    print("Server ready - GPIO operations can now proceed")
+    
     try:
-        socketio.run(app, host='0.0.0.0', port=5000)
+        socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
     finally:
         print("Main server stopped")
