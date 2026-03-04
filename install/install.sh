@@ -62,6 +62,12 @@ sudo apt update && sudo apt upgrade -y
 # Step 3: Install Dependencies
 # ============================================================================
 echo -e "${YELLOW}Step 3: Installing system dependencies...${NC}"
+sudo apt update
+
+# Remove conflicting esptool packages and reinstall from pip only
+echo "Fixing esptool installation..."
+sudo apt remove -y esptool python3-esptool 2>/dev/null || true
+
 sudo apt install -y \
     python3-pip \
     python3-venv \
@@ -71,10 +77,28 @@ sudo apt install -y \
     wget \
     avrdude \
     openocd \
-    esptool \
     alsa-utils \
     libportaudio2 \
     ffmpeg
+
+# Install esptool as Python module ONLY (more reliable)
+echo "Installing esptool Python module..."
+pip3 install --break-system-packages esptool
+
+# Install lgpio for GPIO control
+echo "Installing lgpio for GPIO control..."
+pip3 install --break-system-packages lgpio
+
+# Install ustreamer from source (more reliable)
+echo "Installing ustreamer from source..."
+cd /tmp
+if [ ! -d "ustreamer" ]; then
+    git clone https://github.com/pikvm/ustreamer.git
+fi
+cd ustreamer
+make -j$(nproc)
+sudo make install
+cd "$PROJECT_DIR"
 
 # ============================================================================
 # Step 4: Clone Repository

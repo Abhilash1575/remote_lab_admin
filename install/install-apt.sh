@@ -25,14 +25,37 @@ cd "$PROJECT_DIR"
 # Step 1: Install additional hardware-specific packages
 # ============================================================================
 echo -e "${YELLOW}Step 1: Installing hardware-specific packages...${NC}"
+
+# Remove conflicting esptool packages and reinstall from pip only
+echo "Fixing esptool installation..."
+sudo apt remove -y esptool python3-esptool 2>/dev/null || true
+sudo apt update
 sudo apt install -y \
     avrdude \
     openocd \
-    esptool \
     alsa-utils \
     libportaudio2 \
     ffmpeg \
-    ustreamer
+    python3-pip
+
+# Install esptool as Python module ONLY (more reliable)
+echo "Installing esptool Python module..."
+pip3 install --break-system-packages esptool
+
+# Install lgpio for GPIO control
+echo "Installing lgpio for GPIO control..."
+pip3 install --break-system-packages lgpio
+
+# Install ustreamer from source
+echo "Installing ustreamer..."
+cd /tmp
+if [ ! -d "ustreamer" ]; then
+    git clone https://github.com/pikvm/ustreamer.git
+fi
+cd ustreamer
+make -j$(nproc)
+sudo make install
+cd "$PROJECT_DIR"
 
 # ============================================================================
 # Step 2: Create required directories
