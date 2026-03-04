@@ -222,29 +222,35 @@ def main():
             # Retry I2C reads up to 3 times
             soc = None
             voltage = None
+            i2c_success = False
             for attempt in range(3):
                 try:
                     soc = read_soc()
                     voltage = read_voltage()
+                    i2c_success = True
                     break  # Success, exit retry loop
                 except IOError as e:
                     if attempt < 2:
                         print(f"⚠️ I2C read error, retrying... ({attempt+1}/3)")
                         time.sleep(1)
                     else:
-                        raise
+                        print(f"⚠️ I2C read failed after 3 attempts")
             
-            # If I2C failed, use last known values or defaults
-            if soc is None:
-                soc = 0.0
-            if voltage is None:
-                voltage = 0.0
+            # Only check battery status if I2C read was successful
+            # Don't shutdown if I2C fails - just skip the check
+            if i2c_success and soc is not None and soc > 0:
+                battery_reminder(soc)
+            elif not i2c_success:
+                print("⚠️ Skipping battery check - I2C communication issue")
             
+            # Get AC status (works even if I2C fails)
             ac = ac_status()
-            chg = charging_status(ac, voltage)
             
-            # Check battery status and trigger alerts/shutdown
-            battery_reminder(soc)
+            # Only get charging status if we have valid voltage
+            if voltage is not None and voltage > 0:
+                chg = charging_status(ac, voltage)
+            else:
+                chg = "UNKNOWN"
             
             if ac != last_ac:
                 print(f"🔌 POWER STATUS → {ac}", flush=True)
@@ -253,12 +259,15 @@ def main():
             # Log data every LOG_INTERVAL seconds
             current_time = time.time()
             if current_time - last_log_time >= LOG_INTERVAL:
-                log_data(soc, voltage, ac, chg)
+                log_data(soc if soc else 0, voltage if voltage else 0, ac, chg)
                 last_log_time = current_time
             
+            # Print status - handle None values
+            soc_display = soc if soc is not None else 0
+            voltage_display = voltage if voltage is not None else 0
             print(
-                f"🔋 SOC: {soc:.2f}% | "
-                f"⚡ Voltage: {voltage:.3f} V | "
+                f"🔋 SOC: {soc_display:.2f}% | "
+                f"⚡ Voltage: {voltage_display:.3f} V | "
                 f"🔄 {ac} | "
                 f"🔋 {chg}",
                 flush=True
