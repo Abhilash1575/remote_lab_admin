@@ -77,6 +77,9 @@ def swap16(x):
 def read_soc():
     raw = bus.read_word_data(ADDR, 0x04)
     soc = swap16(raw) / 256.0
+    # Validate - SOC should be between 0 and 100
+    if soc < 0 or soc > 100:
+        raise ValueError(f"Invalid SOC value: {soc}")
     return max(0.0, min(100.0, soc))
 
 def read_voltage():
@@ -86,7 +89,11 @@ def read_voltage():
     """
     raw = bus.read_word_data(ADDR, 0x02)
     vcell = swap16(raw) * 1.25 / 1000.0
-    return round(vcell / 16.0, 3)
+    voltage = round(vcell / 16.0, 3)
+    # Validate - voltage should be between 3.0V and 4.2V for a LiPo battery
+    if voltage < 3.0 or voltage > 4.5:
+        raise ValueError(f"Invalid voltage value: {voltage}")
+    return voltage
 
 def ac_status():
     if not GPIO_AVAILABLE:
