@@ -1917,8 +1917,8 @@ def flash_firmware():
     # This avoids PATH issues and ensures we use the correct esptool
     python_exec = sys.executable
     commands = {
-        'esp32': f"{python_exec} -m esptool --chip esp32 --port {port} --baud 921600 write_flash 0x10000 {dest}",
-        'esp8266': f"{python_exec} -m esptool --chip esp8266 --port {port} --baud 921600 write_flash 0x00000 {dest}",
+        'esp32': f"{python_exec} -m esptool --chip esp32 --port {port} --baud 115200 --before default-reset write-flash 0x10000 {dest}",
+        'esp8266': f"{python_exec} -m esptool --chip esp8266 --port {port} --baud 115200 --before default-reset write-flash 0x00000 {dest}",
         'arduino': f"avrdude -v -p atmega328p -c arduino -P {port} -b115200 -D -U flash:w:{dest}:{ 'i' if file_ext == '.hex' else 'r' }",
         'attiny': f"avrdude -v -p attiny85 -c usbasp -P {port} -U flash:w:{dest}:{ 'i' if file_ext == '.hex' else 'r' }",
         'stm32': f"openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c \"program {dest} 0x08000000 verify reset exit\"",
@@ -1948,10 +1948,12 @@ def run_flash_command(cmd, filename=None, timeout=180):
         if 'echo' in cmd:
             p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         else:
-            # Check if command starts with a known available tool
-            tool = cmd.split()[0]
-            if tool not in ['avrdude', 'esptool', 'openocd', 'python3']:
-                socketio.emit('flashing_status', f'❌ Error: Tool {tool} not installed')
+            # Check if command starts with a known available tool (handle both full path and short name)
+            first_word = cmd.split()[0]
+            # Extract just the executable name (handle both /usr/bin/python3 and python3)
+            tool_name = os.path.basename(first_word)
+            if tool_name not in ['avrdude', 'esptool', 'esptool.py', 'openocd', 'python3', 'python']:
+                socketio.emit('flashing_status', f'❌ Error: Tool {tool_name} not installed')
                 return
             
             # Extract port from command for cleanup (supports --port, -P, and openocd interfaces)

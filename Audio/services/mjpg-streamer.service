@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=%i
+User=pi
 ExecStart=/usr/local/bin/ustreamer --host 0.0.0.0 --port 8080 --device /dev/video0 --format jpeg --resolution 640x480 --fps 15
 Restart=always
 RestartSec=10
