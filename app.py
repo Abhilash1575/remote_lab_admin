@@ -679,7 +679,7 @@ def edit_device(device_id):
         flash('Device updated successfully', 'success')
         return redirect(url_for('manage_devices'))
     
-    return render_template('admin/edit_device.html', device=device)
+    return render_template('admin/edit_device.html', device=device, experiments=[], mapped_experiment_ids=[])
 
 @app.route('/admin/devices/view/<int:device_id>')
 @login_required
@@ -1676,6 +1676,48 @@ def ports_rest():
     return jsonify({'ports': list_serial_ports()})
 
 # ---------- BOOKING SYSTEM ----------
+
+# API endpoint to get available time slots for a given experiment and date
+@app.route('/api/available-slots/<int:exp_id>')
+@login_required
+def get_available_slots(exp_id):
+    """Return available time slots for the given experiment and date"""
+    experiment = Experiment.query.get(exp_id)
+    if not experiment:
+        return jsonify({'error': 'Experiment not found'}), 404
+    
+    date_str = request.args.get('date')
+    if not date_str:
+        return jsonify({'error': 'Date parameter required'}), 400
+    
+    try:
+        selected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'Invalid date format'}), 400
+    
+    # Get all bookings for this experiment on the selected date
+    start_of_day = datetime.combine(selected_date, datetime.min.time())
+    end_of_day = start_of_day + timedelta(days=1)
+    
+    bookings = Booking.query.filter(
+        Booking.experiment_id == exp_id,
+        Booking.status.notin_(['CANCELLED', 'EXPIRED']),
+        Booking.start_time >= start_of_day,
+        Booking.start_time < end_of_day
+    ).all()
+    
+    # Extract booked hours (slots are hourly)
+    booked_slots = set()
+    for booking in bookings:
+        hour = booking.start_time.hour
+        booked_slots.add(f"{hour:02d}:00")
+    
+    return jsonify({
+        'date': date_str,
+        'booked_slots': list(booked_slots),
+        'experiment_id': exp_id
+    })
+
 @app.route('/book/<int:exp_id>', methods=['GET', 'POST'])
 @login_required
 def book_experiment(exp_id):
@@ -1689,8 +1731,21 @@ def book_experiment(exp_id):
         print(f"DEBUG: Form data: {request.form}")
         
         slot_date = request.form['slotDate']
-        slot_time = request.form['slotTime']
+        selected_slot = request.form.get('selectedSlot')  # New format: HH:00
         duration = int(request.form['duration'])
+        
+        if not selected_slot:
+            flash('Please select a time slot', 'danger')
+            return redirect(url_for('book_experiment', exp_id=exp_id))
+        
+        # Validate slot format (should be HH:00)
+        try:
+            hour = int(selected_slot.split(':')[0])
+            if hour < 0 or hour > 23:
+                raise ValueError("Invalid hour")
+        except (ValueError, IndexError):
+            flash('Invalid time slot format', 'danger')
+            return redirect(url_for('book_experiment', exp_id=exp_id))
         
         if duration > experiment.max_duration:
             flash(f'Maximum duration for this experiment is {experiment.max_duration} minutes', 'danger')
@@ -1698,7 +1753,7 @@ def book_experiment(exp_id):
         
         # Parse date and time - use naive datetime (local time) for simplicity
         try:
-            start_time = datetime.strptime(f"{slot_date} {slot_time}", "%Y-%m-%d %H:%M")
+            start_time = datetime.strptime(f"{slot_date} {selected_slot}", "%Y-%m-%d %H:%M")
             end_time = start_time + timedelta(minutes=duration)
             print(f"DEBUG: Parsed start time: {start_time}, end time: {end_time}")
         except ValueError as e:
@@ -2514,6 +2569,13 @@ def admin_lab_pi_edit(lab_pi_id):
     lab_pi = LabPi.query.get_or_404(lab_pi_id)
     experiments = Experiment.query.all()
     
+    # Get all experiments that are already mapped to other Lab Pis (excluding current one)
+    mapped_experiments = LabPi.query.filter(
+        LabPi.id != lab_pi_id,
+        LabPi.experiment_id.isnot(None)
+    ).with_entities(LabPi.experiment_id).all()
+    mapped_experiment_ids = [exp_id for (exp_id,) in mapped_experiments]
+    
     if request.method == 'POST':
         # Update Lab Pi fields
         lab_pi.name = request.form.get('name', lab_pi.name)
@@ -2525,13 +2587,23 @@ def admin_lab_pi_edit(lab_pi_id):
         
         # Update experiment assignment
         experiment_id = request.form.get('experiment_id')
+        
+        # Validate: prevent mapping to an already assigned experiment
+        if experiment_id:
+            exp_id_int = int(experiment_id)
+            if exp_id_int in mapped_experiment_ids:
+                flash('This experiment is already mapped to another Lab Pi. Please select a different experiment.', 'danger')
+                return render_template('admin/edit_device.html', device=lab_pi, experiments=experiments, 
+                                      mapped_experiment_ids=mapped_experiment_ids, is_lab_pi=True)
+        
         lab_pi.experiment_id = int(experiment_id) if experiment_id else None
         
         db.session.commit()
         flash(f'Lab Pi "{lab_pi.name}" updated successfully!', 'success')
         return redirect(url_for('manage_devices'))
     
-    return render_template('admin/edit_device.html', device=lab_pi, experiments=experiments, is_lab_pi=True)
+    return render_template('admin/edit_device.html', device=lab_pi, experiments=experiments, 
+                          mapped_experiment_ids=mapped_experiment_ids, is_lab_pi=True)
 
 
 @app.route('/admin/lab-pi/view/<int:lab_pi_id>', methods=['GET'])

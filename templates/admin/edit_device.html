@@ -54,15 +54,25 @@
                                 <label class="form-label">
                                     <i class="fas fa-flask"></i> Assigned Experiment
                                 </label>
-                                <select class="form-select" name="experiment_id">
+                                <select class="form-select" name="experiment_id" id="experimentSelect">
                                     <option value="">-- Not Assigned --</option>
                                     {% for exp in experiments %}
-                                    <option value="{{ exp.id }}" {% if device.experiment_id == exp.id %}selected{% endif %}>
-                                        {{ exp.name }}
+                                    {% set is_mapped = exp.id in (mapped_experiment_ids or []) %}
+                                    <option value="{{ exp.id }}" 
+                                            {% if device.experiment_id == exp.id %}selected{% endif %}
+                                            {% if is_mapped and device.experiment_id != exp.id %}disabled{% endif %}
+                                            {% if is_mapped and device.experiment_id != exp.id %}style="color: #999;"{% endif %}>
+                                        {{ exp.name }}{% if is_mapped and device.experiment_id != exp.id %} (Mapped){% endif %}
                                     </option>
                                     {% endfor %}
                                 </select>
-                                <small class="text-muted">Select which experiment this Lab Pi handles</small>
+                                <small class="text-muted">
+                                    {% if mapped_experiment_ids|length > 0 %}
+                                    Note: Experiments already mapped to other Lab Pis are shown in grey and cannot be selected.
+                                    {% else %}
+                                    Select which experiment this Lab Pi handles
+                                    {% endif %}
+                                </small>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Status</label>

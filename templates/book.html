@@ -121,6 +121,19 @@
             font-size: 16px;
         }
 
+        .experiment-details .meta {
+            margin-top: 15px;
+            color: #6c757d;
+        }
+
+        .experiment-details .meta i {
+            margin-right: 5px;
+        }
+
+        .experiment-details .meta span {
+            margin-right: 20px;
+        }
+
         .booking-form {
             margin-top: 30px;
         }
@@ -162,6 +175,97 @@
             box-shadow: 0 0 0 3px rgba(0, 196, 255, 0.1);
         }
 
+        /* Time Slots Grid - 24 hourly slots */
+        .time-slots-container {
+            margin-top: 15px;
+        }
+
+        .time-slots-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .time-slot {
+            padding: 12px 8px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .time-slot.available {
+            background: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+
+        .time-slot.available:hover {
+            background: #c3e6cb;
+            transform: translateY(-2px);
+            box-shadow: 0 3px 10px rgba(40, 167, 69, 0.3);
+        }
+
+        .time-slot.booked {
+            background: #f8d7da;
+            border-color: #dc3545;
+            color: #721c24;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        .time-slot.selected {
+            background: #00C4FF;
+            border-color: #0099CC;
+            color: white;
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0, 196, 255, 0.4);
+        }
+
+        .time-slot.selected.available {
+            background: #00C4FF;
+            border-color: #0099CC;
+            color: white;
+        }
+
+        .date-selection-hint {
+            padding: 10px 15px;
+            background: #e7f3ff;
+            border-radius: 8px;
+            color: #0056b3;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .duration-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .duration-option {
+            padding: 10px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        .duration-option:hover {
+            border-color: #00C4FF;
+        }
+
+        .duration-option.selected {
+            background: #00C4FF;
+            border-color: #0099CC;
+            color: white;
+        }
+
         .booking-summary {
             margin-top: 30px;
             padding: 20px;
@@ -180,6 +284,10 @@
             justify-content: space-between;
             margin-bottom: 10px;
             color: #6c757d;
+        }
+
+        .summary-item strong {
+            color: #484c7f;
         }
 
         .flash-messages {
@@ -230,6 +338,16 @@
             .experiment-details h2 {
                 font-size: 24px;
             }
+
+            .time-slots-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .time-slots-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
     </style>
 </head>
@@ -270,64 +388,71 @@
             <div class="experiment-details">
                 <h2>{{ experiment.name }}</h2>
                 <p>{{ experiment.description }}</p>
-                <div style="margin-top: 15px; color: #6c757d;">
-                    <i class="fas fa-clock"></i> Maximum Duration: {{ experiment.max_duration }} minutes
+                <div class="meta">
+                    <span><i class="fas fa-clock"></i> Maximum Duration: {{ experiment.max_duration }} minutes</span>
                     {% if experiment.price > 0 %}
-                        <span style="margin-left: 20px;"><i class="fas fa-rupee-sign"></i> Price: {{ experiment.price }}</span>
+                        <span><i class="fas fa-rupee-sign"></i> Price: {{ experiment.price }} per hour</span>
                     {% endif %}
                 </div>
             </div>
 
-            <form method="POST" class="booking-form">
+            <form method="POST" class="booking-form" id="bookingForm" data-max-duration="{{ experiment.max_duration }}" data-price="{{ experiment.price }}" data-exp-id="{{ experiment.id }}">
                 <div class="form-grid">
                     <div class="form-group">
                         <label for="slotDate">Select Date</label>
                         <input type="date" id="slotDate" name="slotDate" required min="{{ today }}">
                     </div>
-
-                    <div class="form-group">
-                        <label for="slotTime">Select Time</label>
-                        <input type="time" id="slotTime" name="slotTime" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="duration">Duration (minutes)</label>
-                        <select id="duration" name="duration" required>
-                            <option value="2">2 minutes</option>
-                            {% for i in range(15, experiment.max_duration + 1, 15) %}
-                                <option value="{{ i }}">{{ i }} minutes</option>
-                            {% endfor %}
-                        </select>
-                    </div>
                 </div>
 
-                <div class="booking-summary">
+                <div class="form-group">
+                    <label>Select Time Slot (1-hour sessions)</label>
+                    <div class="date-selection-hint" id="dateHint">
+                        <i class="fas fa-info-circle"></i> Please select a date first to see available time slots
+                    </div>
+                    <div class="time-slots-container" id="timeSlotsContainer" style="display: none;">
+                        <div class="time-slots-grid" id="timeSlotsGrid">
+                            <!-- Time slots will be populated dynamically -->
+                        </div>
+                    </div>
+                    <!-- Hidden input to store selected slot -->
+                    <input type="hidden" id="selectedSlot" name="selectedSlot" required>
+                </div>
+
+                <div class="form-group" id="durationGroup" style="display: none;">
+                    <label>Session Duration</label>
+                    <div class="duration-group" id="durationOptions">
+                        <!-- Duration options will be populated based on experiment max_duration -->
+                    </div>
+                    <input type="hidden" id="duration" name="duration" required>
+                </div>
+
+                <div class="booking-summary" id="bookingSummary" style="display: none;">
                     <h3>Booking Summary</h3>
                     <div class="summary-item">
                         <span>Experiment</span>
-                        <span>{{ experiment.name }}</span>
+                        <strong>{{ experiment.name }}</strong>
                     </div>
                     <div class="summary-item">
                         <span>Date</span>
-                        <span id="summaryDate">Not selected</span>
+                        <strong id="summaryDate">-</strong>
                     </div>
                     <div class="summary-item">
-                        <span>Time</span>
-                        <span id="summaryTime">Not selected</span>
+                        <span>Time Slot</span>
+                        <strong id="summaryTime">-</strong>
                     </div>
                     <div class="summary-item">
                         <span>Duration</span>
-                        <span id="summaryDuration">Not selected</span>
+                        <strong id="summaryDuration">-</strong>
                     </div>
                     {% if experiment.price > 0 %}
                         <div class="summary-item">
                             <span>Total Price</span>
-                            <span id="summaryPrice">₹0</span>
+                            <strong id="summaryPrice">₹0</strong>
                         </div>
                     {% endif %}
                 </div>
 
-                <button type="submit" class="btn-primary" style="width: 100%; padding: 14px; margin-top: 20px; font-size: 16px;">
+                <button type="submit" class="btn-primary" id="submitBtn" style="width: 100%; padding: 14px; margin-top: 20px; font-size: 16px;" disabled>
                     <i class="fas fa-calendar-plus"></i> Book Experiment
                 </button>
             </form>
@@ -335,39 +460,181 @@
     </div>
 
     <script>
+        // Get form element and read data attributes
+        const bookingForm = document.getElementById('bookingForm');
+        const maxDuration = parseInt(bookingForm.dataset.maxDuration);
+        const pricePerHour = parseFloat(bookingForm.dataset.price);
+        const expId = parseInt(bookingForm.dataset.expId);
+        
         // Get today's date for min date attribute
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('slotDate').setAttribute('min', today);
+        
+        // Generate time slots (24 hours: 00:00 - 23:00)
+        const timeSlots = [];
+        for (let hour = 0; hour < 24; hour++) {
+            const timeStr = hour.toString().padStart(2, '0') + ':00';
+            const displayTime = hour.toString().padStart(2, '0') + ':00 - ' + (hour + 1).toString().padStart(2, '0') + ':00';
+            timeSlots.push({ time: timeStr, display: displayTime });
+        }
 
-        // Update summary when date, time, or duration changes
-        document.getElementById('slotDate').addEventListener('change', updateSummary);
-        document.getElementById('slotTime').addEventListener('change', updateSummary);
-        document.getElementById('duration').addEventListener('change', updateSummary);
+        // State
+        let selectedDate = null;
+        let selectedTimeSlot = null;
+        let selectedDuration = null;
+        let bookedSlots = new Set();
 
+        // Generate duration options based on max_duration
+        function generateDurationOptions() {
+            const container = document.getElementById('durationOptions');
+            container.innerHTML = '';
+            
+            // Durations: 15, 30, 45, 60 minutes up to max_duration
+            const durations = [15, 30, 45, 60];
+            const availableDurations = durations.filter(d => d <= maxDuration);
+            
+            // If max_duration > 60, add hourly options
+            if (maxDuration > 60) {
+                for (let d = 60; d <= maxDuration; d += 60) {
+                    if (!availableDurations.includes(d)) {
+                        availableDurations.push(d);
+                    }
+                }
+            }
+            
+            availableDurations.sort((a, b) => a - b);
+            
+            availableDurations.forEach(d => {
+                const div = document.createElement('div');
+                div.className = 'duration-option';
+                div.dataset.duration = d;
+                div.textContent = d + ' min';
+                div.onclick = () => selectDuration(d);
+                container.appendChild(div);
+            });
+        }
+
+        // Select duration
+        function selectDuration(duration) {
+            selectedDuration = duration;
+            
+            // Update UI
+            document.querySelectorAll('.duration-option').forEach(opt => {
+                opt.classList.remove('selected');
+                if (parseInt(opt.dataset.duration) === duration) {
+                    opt.classList.add('selected');
+                }
+            });
+            
+            document.getElementById('duration').value = duration;
+            updateSummary();
+        }
+
+        // Handle date change
+        document.getElementById('slotDate').addEventListener('change', async function(e) {
+            selectedDate = e.target.value;
+            selectedTimeSlot = null;
+            selectedDuration = null;
+            
+            if (selectedDate) {
+                // Fetch booked slots for this date
+                await fetchBookedSlots(selectedDate);
+                renderTimeSlots();
+                document.getElementById('timeSlotsContainer').style.display = 'block';
+                document.getElementById('dateHint').style.display = 'none';
+                document.getElementById('durationGroup').style.display = 'block';
+                generateDurationOptions();
+            } else {
+                document.getElementById('timeSlotsContainer').style.display = 'none';
+                document.getElementById('dateHint').style.display = 'block';
+                document.getElementById('durationGroup').style.display = 'none';
+            }
+            updateSummary();
+        });
+
+        // Fetch booked slots from server
+        async function fetchBookedSlots(date) {
+            try {
+                const response = await fetch(`/api/available-slots/${expId}?date=${date}`);
+                const data = await response.json();
+                
+                bookedSlots = new Set();
+                if (data.booked_slots) {
+                    data.booked_slots.forEach(slot => bookedSlots.add(slot));
+                }
+            } catch (error) {
+                console.error('Error fetching booked slots:', error);
+                bookedSlots = new Set();
+            }
+        }
+
+        // Render time slots
+        function renderTimeSlots() {
+            const grid = document.getElementById('timeSlotsGrid');
+            grid.innerHTML = '';
+            
+            timeSlots.forEach(slot => {
+                const div = document.createElement('div');
+                div.className = 'time-slot';
+                div.dataset.time = slot.time;
+                div.textContent = slot.display;
+                
+                if (bookedSlots.has(slot.time)) {
+                    div.classList.add('booked');
+                    div.title = 'This slot is already booked';
+                } else {
+                    div.classList.add('available');
+                    div.onclick = () => selectTimeSlot(slot.time, div);
+                }
+                
+                grid.appendChild(div);
+            });
+        }
+
+        // Select time slot
+        function selectTimeSlot(time, element) {
+            selectedTimeSlot = time;
+            
+            // Update UI
+            document.querySelectorAll('.time-slot').forEach(slot => {
+                slot.classList.remove('selected');
+            });
+            element.classList.add('selected');
+            
+            document.getElementById('selectedSlot').value = time;
+            updateSummary();
+        }
+
+        // Update booking summary
         function updateSummary() {
-            const date = document.getElementById('slotDate').value;
-            const time = document.getElementById('slotTime').value;
-            const duration = document.getElementById('duration').value;
-            const price = {{ experiment.price }};
-
-            document.getElementById('summaryDate').textContent = date || 'Not selected';
-            document.getElementById('summaryTime').textContent = time || 'Not selected';
-            document.getElementById('summaryDuration').textContent = duration ? duration + ' minutes' : 'Not selected';
-
-            {% if experiment.price > 0 %}
-                const totalPrice = price * (duration / 60);
-                document.getElementById('summaryPrice').textContent = '₹' + totalPrice.toFixed(2);
-            {% endif %}
+            const summary = document.getElementById('bookingSummary');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            if (selectedDate && selectedTimeSlot && selectedDuration) {
+                summary.style.display = 'block';
+                submitBtn.disabled = false;
+                
+                document.getElementById('summaryDate').textContent = selectedDate;
+                
+                const hour = parseInt(selectedTimeSlot.split(':')[0]);
+                const endHour = hour + 1;
+                document.getElementById('summaryTime').textContent = 
+                    `${hour.toString().padStart(2, '0')}:00 - ${endHour.toString().padStart(2, '0')}:00`;
+                
+                document.getElementById('summaryDuration').textContent = selectedDuration + ' minutes';
+                
+                if (pricePerHour > 0) {
+                    const totalPrice = pricePerHour * (selectedDuration / 60);
+                    document.getElementById('summaryPrice').textContent = '₹' + totalPrice.toFixed(2);
+                }
+            } else {
+                summary.style.display = 'none';
+                submitBtn.disabled = true;
+            }
         }
 
-        // Auto-update time options based on availability (placeholder for real availability check)
-        function updateTimeOptions() {
-            // This would check real availability from the server
-            // For now, we'll just enable all times
-        }
-
-        // Initial summary update
-        updateSummary();
+        // Initialize
+        generateDurationOptions();
     </script>
 </body>
 </html>
