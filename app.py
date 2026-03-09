@@ -1730,9 +1730,20 @@ def book_experiment(exp_id):
         print("DEBUG: Booking form submitted")
         print(f"DEBUG: Form data: {request.form}")
         
-        slot_date = request.form['slotDate']
+        slot_date = request.form.get('slotDate')
         selected_slot = request.form.get('selectedSlot')  # New format: HH:00
-        duration = int(request.form['duration'])
+        duration_str = request.form.get('duration')
+        
+        # Validate required fields
+        if not slot_date or not selected_slot or not duration_str:
+            flash('Please fill in all required fields', 'danger')
+            return redirect(url_for('book_experiment', exp_id=exp_id))
+        
+        try:
+            duration = int(duration_str)
+        except (ValueError, TypeError):
+            flash('Invalid duration format', 'danger')
+            return redirect(url_for('book_experiment', exp_id=exp_id))
         
         if not selected_slot:
             flash('Please select a time slot', 'danger')
@@ -1775,20 +1786,26 @@ def book_experiment(exp_id):
             return redirect(url_for('book_experiment', exp_id=exp_id))
         
         # Create booking
-        session_key = generate_session_key()
-        booking = Booking(
-            user_id=current_user.id,
-            experiment_id=exp_id,
-            start_time=start_time,
-            end_time=end_time,
-            status='UPCOMING',
-            session_key=session_key
-        )
-        db.session.add(booking)
-        db.session.commit()
-        
-        print(f"DEBUG: Booking created successfully: {booking}")
-        print(f"DEBUG: Session key: {session_key}")
+        try:
+            session_key = generate_session_key()
+            booking = Booking(
+                user_id=current_user.id,
+                experiment_id=exp_id,
+                start_time=start_time,
+                end_time=end_time,
+                status='UPCOMING',
+                session_key=session_key
+            )
+            db.session.add(booking)
+            db.session.commit()
+            
+            print(f"DEBUG: Booking created successfully: {booking}")
+            print(f"DEBUG: Session key: {session_key}")
+        except Exception as e:
+            print(f"DEBUG: Error creating booking: {e}")
+            db.session.rollback()
+            flash('Error creating booking. Please try again.', 'danger')
+            return redirect(url_for('book_experiment', exp_id=exp_id))
         
         # Send confirmation email
         subject = 'Booking Confirmed'
@@ -1796,7 +1813,7 @@ def book_experiment(exp_id):
             <h1>Booking Confirmed!</h1>
             <p>Your booking for {experiment.name} has been confirmed.</p>
             <p><strong>Date:</strong> {slot_date}</p>
-            <p><strong>Time:</strong> {slot_time}</p>
+            <p><strong>Time:</strong> {selected_slot}</p>
             <p><strong>Duration:</strong> {duration} minutes</p>
             <p><strong>Session Key:</strong> {session_key}</p>
             <p>You will receive a reminder email 30 minutes before your session starts.</p>

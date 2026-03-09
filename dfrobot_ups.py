@@ -32,10 +32,15 @@ ADDR = 0x36
 # The DFRobot UPS uses GPIO 6 by default, can be changed
 AC_GPIO = 6
 
-# Logging configuration
+# Logging configuration - Use dynamic paths for portability
 LOG_INTERVAL = 30  # seconds
-LOG_FILE = "/home/abhi/admin-pi/ups_log.csv"
-BATTERY_STATUS_FILE = "/home/abhi/admin-pi/battery_status.json"
+HOME_DIR = os.path.expanduser("~")  # Get home directory dynamically
+PROJECT_NAME = "admin-pi"  # Admin-pi specific
+LOG_FILE = f"{HOME_DIR}/{PROJECT_NAME}/ups_log.csv"
+BATTERY_STATUS_FILE = f"{HOME_DIR}/{PROJECT_NAME}/battery_status.json"
+
+# Ensure log directory exists
+os.makedirs(f"{HOME_DIR}/{PROJECT_NAME}", exist_ok=True)
 
 # Battery thresholds
 WARNING_SOC = 20
