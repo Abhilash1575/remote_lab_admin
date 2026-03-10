@@ -796,27 +796,28 @@ xAxisFilter.addEventListener('change', updateChartConfig);
 yAxisFilter1.addEventListener('change', updateChartConfig);
 yAxisFilter2.addEventListener('change', updateChartConfig);
 
-/* Dynamically populate Y-axis options based on knownSensorKeys */
+/* Dynamically populate Y-axis options based on current data */
 function updateYAxisFilterOptions(newKeys){
-  let updated = false;
-  newKeys.forEach(k => {
-    if(!knownSensorKeys.has(k)) { knownSensorKeys.add(k); updated = true; }
-  });
-  if(!updated && yAxisFilter1.options.length > 0 && yAxisFilter1.value) return; 
+  // Convert to Set if it's not already (handles both Set and array)
+  const keySet = newKeys instanceof Set ? newKeys : new Set(newKeys);
+  const keysArray = Array.from(keySet);
+  
   const cur1 = yAxisFilter1.value;
   const cur2 = yAxisFilter2.value;
   yAxisFilter1.innerHTML = '';
   yAxisFilter2.innerHTML = '<option value="">(Disabled)</option>';
-  const keysArray = Array.from(knownSensorKeys);
+  
+  // Use ONLY the new keys from current data
   keysArray.forEach(k => {
     const displayLabel = k.split('_').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
     const o1 = document.createElement('option'); o1.value=k; o1.innerText = displayLabel; yAxisFilter1.appendChild(o1);
     const o2 = document.createElement('option'); o2.value=k; o2.innerText = displayLabel; yAxisFilter2.appendChild(o2);
   });
-  // Keep current selection if valid, otherwise use first available
-  let defaultKey1 = cur1 && knownSensorKeys.has(cur1) ? cur1 : (keysArray.length > 0 ? keysArray[0] : '');
+  
+  // Keep current selection if valid, otherwise use first available from new keys
+  let defaultKey1 = cur1 && keySet.has(cur1) ? cur1 : (keysArray.length > 0 ? keysArray[0] : '');
   yAxisFilter1.value = defaultKey1;
-  let defaultKey2 = cur2 && knownSensorKeys.has(cur2) ? cur2 : (keysArray.length > 1 ? keysArray[1] : '');
+  let defaultKey2 = cur2 && keySet.has(cur2) ? cur2 : (keysArray.length > 1 ? keysArray[1] : '');
   yAxisFilter2.value = defaultKey2;
   updateChartConfig(); 
 }
@@ -826,22 +827,22 @@ socket.on('sensor_data', (payload) => {
   if (!payload) return;
   sampleCount++;
 
-  // Get available numeric keys
-  const numericKeys = Object.keys(payload).filter(k =>
+  // Get available numeric keys from CURRENT data only
+  const numericKeys = new Set(Object.keys(payload).filter(k =>
     payload[k] !== null && payload[k] !== undefined &&
     !isNaN(Number(payload[k]))
-  ).map(k => k.toLowerCase());
+  ).map(k => k.toLowerCase()));
 
-  // Update known sensor keys
+  // Update dropdown options with current data keys
+  updateYAxisFilterOptions(numericKeys);
+
+  // Auto-create slider items in varDropdown for new variables (keep for sliders)
+  autoCreateSlidersFromSensors(Array.from(numericKeys));
+
+  // Also accumulate for slider controls (but not for dropdown)
   numericKeys.forEach(k => {
     if(!knownSensorKeys.has(k)) knownSensorKeys.add(k);
   });
-
-  // Auto-create slider items in varDropdown for new variables
-  autoCreateSlidersFromSensors(numericKeys);
-
-  // Update dropdown options
-  updateYAxisFilterOptions(numericKeys);
 
   // Auto-select axes immediately if empty
   let axesChanged = false;

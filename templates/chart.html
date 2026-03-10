@@ -105,7 +105,6 @@ function chartLoop(){
 }
 requestAnimationFrame(chartLoop);
 
-let knownSensorKeys = new Set();
 let isAutoScaling = true;
 
 function updateScaling() {
@@ -185,30 +184,26 @@ socket.on('sensor_data', (payload) => {
   if (!payload) return;
   sampleCount++;
 
+  // Get numeric keys from CURRENT data only (not accumulated)
   const numericKeys = Object.keys(payload).filter(k =>
     payload[k] !== null && payload[k] !== undefined &&
     !isNaN(Number(payload[k]))
   ).map(k => k.toLowerCase());
 
-  numericKeys.forEach(k => {
-    if(!knownSensorKeys.has(k)) knownSensorKeys.add(k);
-  });
-
-  // Auto-select first two keys if available
-  const keysArray = Array.from(knownSensorKeys);
-  if (chart.data.datasets[0].label === 'Series 1' && keysArray.length > 0) {
-    chart.data.datasets[0].label = keysArray[0];
-    chart.options.scales.y.title.text = keysArray[0];
+  // Use current data keys only for chart labels
+  if (chart.data.datasets[0].label === 'Series 1' && numericKeys.length > 0) {
+    chart.data.datasets[0].label = numericKeys[0];
+    chart.options.scales.y.title.text = numericKeys[0];
   }
-  if (chart.data.datasets[1].label === 'Series 2' && keysArray.length > 1) {
-    chart.data.datasets[1].label = keysArray[1];
+  if (chart.data.datasets[1].label === 'Series 2' && numericKeys.length > 1) {
+    chart.data.datasets[1].label = numericKeys[1];
     chart.data.datasets[1].hidden = false;
     chart.options.scales.y1.display = true;
-    chart.options.scales.y1.title.text = keysArray[1];
+    chart.options.scales.y1.title.text = numericKeys[1];
   }
 
-  const key1 = keysArray[0];
-  const key2 = keysArray[1];
+  const key1 = numericKeys[0];
+  const key2 = numericKeys[1];
   const val1 = key1 && payload[key1] !== undefined ? Number(payload[key1]) :
                key1 && payload[key1.toLowerCase()] !== undefined ? Number(payload[key1.toLowerCase()]) : null;
   const val2 = key2 && payload[key2] !== undefined ? Number(payload[key2]) :
