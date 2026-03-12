@@ -1327,7 +1327,11 @@ powerSavePopup.innerHTML = `
 document.body.appendChild(powerSavePopup);
 
 if (!sessionKey) {
-  document.body.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100vh; background:#1c1c2b; color:#e0e0e0; font-size:2em;">Invalid Session. Please book a slot from the homepage.</div><button onclick="window.location.href=\'/\'" style="padding:10px 20px; background:#00f0ff; color:#041726; border:none; border-radius:6px; font-weight:700;">Go to Homepage</button>';
+  document.body.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100vh; background:#1c1c2b; color:#e0e0e0; font-size:2em;">Invalid Session. Please book a slot from the homepage.<br><br><span style="font-size:0.5em;">Redirecting...</span></div><button onclick="window.location.href=\'/\'" style="padding:10px 20px; background:#00f0ff; color:#041726; border:none; border-radius:6px; font-weight:700;">Go to Homepage</button>';
+  // Auto-redirect after 2 seconds
+  setTimeout(function() {
+    window.location.href = '/';
+  }, 2000);
 } else {
   // Check if session is already completed
   const sessionStatus = localStorage.getItem('sessionStatus_' + sessionKey);

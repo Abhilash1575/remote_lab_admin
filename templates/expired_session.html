@@ -61,8 +61,14 @@
     <div class="expired-container">
         <h1>Session Expired</h1>
         <p>This session link has expired or is invalid. Session links are only valid during active booking periods.</p>
-        <p class="warning">Please return to the homepage and book a new session to continue.</p>
-        <a href="/" class="home-btn">Go to Homepage</a>
+        <p class="warning">Redirecting to homepage...</p>
+        <a href="/" class="home-btn" id="homeBtn">Go to Homepage</a>
     </div>
+    <script>
+        // Auto-redirect to homepage after 2 seconds
+        setTimeout(function() {
+            window.location.href = '/';
+        }, 2000);
+    </script>
 </body>
 </html>
