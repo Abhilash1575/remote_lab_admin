@@ -1,13 +1,13 @@
 [Unit]
-Description=DFRobot UPS Monitor Service (Admin-Pi)
+Description=DFRobot UPS Monitor Service
 After=network.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=%u
-WorkingDirectory=%h/admin-pi
-ExecStart=/usr/bin/python3 %h/admin-pi/dfrobot_ups.py
+User=%i
+WorkingDirectory=%h/lab-pi
+ExecStart=/usr/bin/python3 %h/lab-pi/dfrobot_ups.py
 Restart=always
 RestartSec=5
 StandardOutput=journal

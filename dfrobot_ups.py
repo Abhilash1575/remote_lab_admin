@@ -45,7 +45,7 @@ os.makedirs(f"{HOME_DIR}/{PROJECT_NAME}", exist_ok=True)
 # Battery thresholds
 WARNING_SOC = 20
 CRITICAL_SOC = 15
-SHUTDOWN_SOC = 10
+SHUTDOWN_SOC = 5
 
 # =========================
 # INITIALIZATION
@@ -98,6 +98,24 @@ def read_soc():
         # Register 0x04 contains SOC
         raw = bus.read_word_data(ADDR, 0x04)
         soc = swap16(raw) / 256.0
+        
+        # Get voltage for diagnostic and fallback calculation
+        voltage = None
+        try:
+            raw_v = bus.read_word_data(ADDR, 0x02)
+            voltage = swap16(raw_v) * 1.25 / 1000 / 16.0
+        except:
+            pass
+        
+        # If SOC is very low (<15%) and voltage is above 3.5V, use voltage-based estimation
+        # This handles cases where fuel gauge lost calibration or has wrong parameters
+        if soc < 15 and voltage is not None and voltage > 3.5:
+            # Estimate SOC based on voltage (LiPo 3.0V-4.2V range)
+            estimated_soc = ((voltage - 3.0) / 1.2) * 100
+            estimated_soc = max(0, min(100, estimated_soc))  # Clamp to 0-100
+            logger.warning(f"Fuel gauge shows {soc:.1f}% but voltage is {voltage:.3f}V - using voltage-based estimate: {estimated_soc:.1f}%")
+            return round(estimated_soc, 2)
+        
         return round(soc, 2)
     except Exception as e:
         logger.error(f"Error reading SOC: {e}")
@@ -250,7 +268,7 @@ def log_data(soc, voltage, current, power, ac, chg):
 # BATTERY MONITORING
 # =========================
 
-def battery_check(soc):
+def battery_check(soc, voltage=None):
     """
     Check battery level and trigger actions based on thresholds
     """
@@ -262,8 +280,14 @@ def battery_check(soc):
     if soc is None:
         return
     
+    # If SOC is very low but we have voltage reading, check if it's a false reading
+    if soc <= SHUTDOWN_SOC and voltage is not None and voltage > 3.5:
+        # Voltage is above 3.8V, likely a fuel gauge issue - don't shutdown
+        logger.warning(f"⚠️ SOC shows {soc}% but voltage is {voltage:.3f}V - possible fuel gauge error, skipping shutdown")
+        return
+    
     if soc <= SHUTDOWN_SOC:
-        logger.critical(f"🛑 Battery at {soc}% → Initiating shutdown")
+        logger.critical(f"🛑 Battery at {soc}% ({voltage:.3f}V if available) → Initiating shutdown")
         shutdown_triggered = True
         time.sleep(5)
         # Execute shutdown
@@ -331,7 +355,7 @@ def main():
             chg = charging_status(ac, voltage)
             
             # Check battery thresholds
-            battery_check(soc)
+            battery_check(soc, voltage)
             
             # Log status
             logger.info(

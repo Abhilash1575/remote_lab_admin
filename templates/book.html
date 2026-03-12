@@ -218,6 +218,14 @@
             opacity: 0.7;
         }
 
+        .time-slot.expired {
+            background: #e2e3e5;
+            border-color: #6c757d;
+            color: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
         .time-slot.selected {
             background: #00C4FF;
             border-color: #0099CC;
@@ -489,8 +497,8 @@
             const container = document.getElementById('durationOptions');
             container.innerHTML = '';
             
-            // Durations: 15, 30, 45, 60 minutes up to max_duration
-            const durations = [15, 30, 45, 60];
+            // Durations: 2, 15, 30, 45, 60 minutes up to max_duration
+            const durations = [2, 15, 30, 45, 60];
             const availableDurations = durations.filter(d => d <= maxDuration);
             
             // If max_duration > 60, add hourly options
@@ -573,16 +581,38 @@
             const grid = document.getElementById('timeSlotsGrid');
             grid.innerHTML = '';
             
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+            const selectedDateValue = document.getElementById('slotDate').value;
+            const today = new Date().toISOString().split('T')[0];
+            const isToday = selectedDateValue === today;
+            
             timeSlots.forEach(slot => {
                 const div = document.createElement('div');
                 div.className = 'time-slot';
                 div.dataset.time = slot.time;
                 div.textContent = slot.display;
                 
+                const slotHour = parseInt(slot.time.split(':')[0]);
+                
+                // Check if slot is already booked (show red regardless of time)
                 if (bookedSlots.has(slot.time)) {
                     div.classList.add('booked');
                     div.title = 'This slot is already booked';
-                } else {
+                } 
+                // Check if slot is expired (past time for today) - only for unbooked slots
+                else if (isToday && slotHour < currentHour) {
+                    div.classList.add('expired');
+                    div.title = 'This slot has already passed';
+                }
+                // Current hour slot should still be available if not booked
+                else if (isToday && slotHour === currentHour && currentMinute >= 55) {
+                    // Only mark as expired if we're in the last 5 minutes of the hour
+                    div.classList.add('expired');
+                    div.title = 'This slot is about to end';
+                }
+                else {
                     div.classList.add('available');
                     div.onclick = () => selectTimeSlot(slot.time, div);
                 }

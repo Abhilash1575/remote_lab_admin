@@ -1360,26 +1360,22 @@ if (!sessionKey) {
       document.getElementById('timer').innerText = `Time Left: ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
       if (remaining <= 0) {
-        // Session ended - close all windows and show overlay
+        // Session ended - show message and redirect to homepage
         localStorage.setItem('sessionStatus_' + sessionKey, 'COMPLETED');
         document.getElementById('sessionClosed').style.display = 'flex';
         document.querySelector('.container').style.display = 'none';
         document.querySelector('.header-bar').style.display = 'none';
 
-        // Auto-expand chart and video before closing
-        try {
-          const expandChartBtn = document.getElementById('expandChartBtn');
-          if (expandChartBtn) {
-            expandChartBtn.click();
-          }
-        } catch (e) { console.log('Auto expand chart error:', e); }
-        
-        try {
-          const expandVideoBtn = document.getElementById('expandVideoBtn');
-          if (expandVideoBtn) {
-            expandVideoBtn.click();
-          }
-        } catch (e) { console.log('Auto expand video error:', e); }
+        // Update the Go to Homepage button to auto-redirect
+        const homeBtn = document.querySelector('#sessionClosed button');
+        if (homeBtn) {
+            homeBtn.innerText = 'Redirecting to Homepage...';
+        }
+
+        // Auto-redirect to homepage after 2 seconds
+        setTimeout(() => {
+            window.location.href = '/';
+        }, 2000);
 
         // Send request to server to remove session and turn off relay
         fetch('/remove_session', {
@@ -1387,23 +1383,6 @@ if (!sessionKey) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ session_key: sessionKey })
         });
-
-        // Close all opened windows
-        openedWindows.forEach(win => {
-          try {
-            if (win && !win.closed) {
-              win.close();
-            }
-          } catch (e) {
-            // Ignore errors when closing windows
-          }
-        });
-        openedWindows = [];
-
-        // Auto-close the main tab after showing the message for 3 seconds
-        setTimeout(() => {
-          window.close();
-        }, 3000);
       } else {
         setTimeout(updateTimer, 1000);
       }
