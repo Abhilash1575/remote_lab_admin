@@ -40,9 +40,9 @@ MASTER_CONFIG = {
     'MAIL_SERVER': os.environ.get('MAIL_SERVER', 'smtp.gmail.com'),
     'MAIL_PORT': int(os.environ.get('MAIL_PORT', 587)),
     'MAIL_USE_TLS': True,
-    'MAIL_USERNAME': os.environ.get('MAIL_USERNAME', 'your-email@gmail.com'),
-    'MAIL_PASSWORD': os.environ.get('MAIL_PASSWORD', 'your-app-password'),
-    'MAIL_DEFAULT_SENDER': os.environ.get('MAIL_DEFAULT_SENDER', 'your-email@gmail.com'),
+    'MAIL_USERNAME': os.environ.get('MAIL_USERNAME', 'patilkumarabhi@gmail.com'),
+    'MAIL_PASSWORD': os.environ.get('MAIL_PASSWORD', 'soqj jdif cwsc eyxf'),
+    'MAIL_DEFAULT_SENDER': os.environ.get('MAIL_DEFAULT_SENDER', 'patilkumarabhi@gmail.com'),
 }
 
 # ============================================================================
@@ -101,6 +101,15 @@ os.makedirs(DEFAULT_FW_DIR, exist_ok=True)
 os.makedirs(SOP_DIR, exist_ok=True)
 
 # ============================================================================
+# GOOGLE OAUTH 2.0 CONFIGURATION
+# ============================================================================
+GOOGLE_OAUTH_CONFIG = {
+    'CLIENT_ID': os.environ.get('GOOGLE_CLIENT_ID', '648412093748-dq86s6ti7sn1n2651mmbvkerkjtd9hgk.apps.googleusercontent.com'),
+    'CLIENT_SECRET': os.environ.get('GOOGLE_CLIENT_SECRET', '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'),
+    'DISCOVERY_URL': 'https://accounts.google.com/.well-known/openid-configuration',
+}
+
+# ============================================================================
 # EXPORT CONFIGURATION AS FLASK COMPATIBLE DICT
 # ============================================================================
 def get_flask_config():
@@ -116,5 +125,7 @@ def get_flask_config():
         'MAIL_USERNAME': config.get('MAIL_USERNAME', MASTER_CONFIG['MAIL_USERNAME']),
         'MAIL_PASSWORD': config.get('MAIL_PASSWORD', MASTER_CONFIG['MAIL_PASSWORD']),
         'MAIL_DEFAULT_SENDER': config.get('MAIL_DEFAULT_SENDER', MASTER_CONFIG['MAIL_DEFAULT_SENDER']),
+        'GOOGLE_CLIENT_ID': GOOGLE_OAUTH_CONFIG['CLIENT_ID'],
+        'GOOGLE_CLIENT_SECRET': GOOGLE_OAUTH_CONFIG['CLIENT_SECRET'],
     }
     return flask_config

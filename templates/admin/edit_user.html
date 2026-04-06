@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit User - Virtual Lab</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            background: #f8f9fa;
+            color: #212529;
+            min-height: 100vh;
+        }
+        .sidebar {
+            width: 250px;
+            height: 100vh;
+            background: linear-gradient(180deg, #484c7f, #1e203a);
+            color: white;
+            position: fixed;
+            top: 0;
+            left: 0;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        .sidebar .logo {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .sidebar .logo i {
+            font-size: 48px;
+            color: #00C4FF;
+            margin-bottom: 10px;
+        }
+        .sidebar .logo h1 {
+            font-size: 20px;
+            font-weight: 800;
+            margin: 0;
+        }
+        .sidebar nav ul {
+            list-style: none;
+            padding: 0;
+        }
+        .sidebar nav ul li { margin-bottom: 10px; }
+        .sidebar nav ul li a {
+            display: block;
+            padding: 12px 15px;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+        .sidebar nav ul li a:hover {
+            background: rgba(0, 196, 255, 0.2);
+            padding-left: 20px;
+        }
+        .sidebar nav ul li a.active {
+            background: rgba(0, 196, 255, 0.3);
+            border-left: 4px solid #00C4FF;
+        }
+        .sidebar nav ul li a i { margin-right: 10px; }
+        .main-content {
+            margin-left: 250px;
+            padding: 20px;
+        }
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h2 {
+            margin: 0;
+            color: #484c7f;
+            font-weight: 800;
+        }
+        .header .user-info {
+            display: flex;
+            align-items: center;
+        }
+        .header .user-info span {
+            font-weight: 600;
+            color: #484c7f;
+        }
+        .header .logout-btn {
+            margin-left: 20px;
+            padding: 8px 16px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .header .logout-btn:hover { background: #c82333; }
+        .content-section {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .form-group { margin-bottom: 20px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #484c7f;
+        }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+            outline: none;
+            border-color: #00C4FF;
+        }
+        .form-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+        }
+        .form-group .help-text {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-primary {
+            background: #00C4FF;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #00a3cc;
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        .form-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+        }
+        .user-info-display {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .user-info-display p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        .user-info-display strong {
+            color: #484c7f;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">
+            <i class="fas fa-users"></i>
+            <h1>Virtual Lab</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('admin_dashboard') }}"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                <li><a href="{{ url_for('manage_bookings') }}"><i class="fas fa-calendar"></i> Bookings</a></li>
+                <li><a href="{{ url_for('manage_sessions') }}"><i class="fas fa-clock"></i> Sessions</a></li>
+                <li><a href="{{ url_for('manage_users') }}"><i class="fas fa-users"></i> Users</a></li>
+                <li><a href="{{ url_for('manage_experiments') }}"><i class="fas fa-flask"></i> Experiments</a></li>
+                <li><a href="{{ url_for('manage_devices') }}"><i class="fas fa-hdd"></i> Devices</a></li>
+            </ul>
+        </nav>
+    </div>
+
+    <div class="main-content">
+        <div class="header">
+            <h2><i class="fas fa-user-edit"></i> Edit User</h2>
+            <div class="user-info">
+                <span>Admin</span>
+                <button class="logout-btn" onclick="window.location.href='{{ url_for('logout') }}'">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+        </div>
+
+        <div class="content-section">
+            <div class="user-info-display">
+                <p><strong>Email:</strong> {{ user.email }}</p>
+                <p><strong>Role:</strong> {% if user.is_admin %}Admin{% else %}User{% endif %}</p>
+                <p><strong>SR Number:</strong> {{ user.sr_number or 'N/A' }}</p>
+                <p><strong>Course:</strong> {{ user.course_name or 'N/A' }}</p>
+            </div>
+
+            <form method="POST">
+                <div class="form-group">
+                    <label for="full_name">Full Name</label>
+                    <input type="text" id="full_name" name="full_name" value="{{ user.full_name }}" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="phone_number">Phone Number</label>
+                    <input type="text" id="phone_number" name="phone_number" value="{{ user.phone_number or '' }}">
+                </div>
+                
+                <div class="form-group">
+                    <label for="sr_number">SR Number</label>
+                    <input type="text" id="sr_number" name="sr_number" value="{{ user.sr_number or '' }}">
+                </div>
+                
+                <div class="form-group">
+                    <label for="course_id">Course ID</label>
+                    <input type="text" id="course_id" name="course_id" value="{{ user.course_id or '' }}">
+                </div>
+                
+                <div class="form-group">
+                    <label for="course_name">Course Name</label>
+                    <input type="text" id="course_name" name="course_name" value="{{ user.course_name or '' }}">
+                </div>
+                
+                <div class="form-group">
+                    <label for="company_college_name">Company/College Name</label>
+                    <input type="text" id="company_college_name" name="company_college_name" value="{{ user.company_college_name or '' }}">
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="active" {% if user.active %}checked{% endif %}>
+                        Active Account
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label for="new_password">New Password (leave blank to keep current)</label>
+                    <input type="password" id="new_password" name="new_password" placeholder="Enter new password">
+                    <p class="help-text">Password must be at least 8 characters with uppercase, lowercase, number, and special character</p>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Update User
+                    </button>
+                    <a href="{{ url_for('manage_users') }}" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.querySelectorAll('.sidebar nav ul li a').forEach(item => {
+            if (item.getAttribute('href') === window.location.pathname) {
+                item.classList.add('active');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+2026-04-02 12:02:25,620 - dfrobot_ups - INFO - I2C bus 1 initialized successfully
+2026-04-02 12:02:25,621 - dfrobot_ups - WARNING - GPIO chip not available: [Errno 2] No such file or directory. AC monitoring disabled.
+2026-04-02 12:02:25,769 - werkzeug - WARNING - Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+/home/abhi/admin-pi/app.py:378: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  now = datetime.utcnow()
+⚠️ GPIO disabled in admin-pi - lab-pi controls relay
+✅ System metrics monitoring started
+========================================
+Virtual Lab Server Starting...
+========================================
+✓ Audio server is running on port 9000
+
+Starting Flask server on port 5000...
+========================================
+Session monitor waiting for server to be ready...
+Session monitor started
+Lab Pi heartbeat monitor started
+Server ready - GPIO operations can now proceed
+ * Serving Flask app 'app'
+ * Debug mode: off
+Address already in use
+Port 5000 is in use by another program. Either identify and stop that program, or start the server with a different port.
+Main server stopped

@@ -14,8 +14,10 @@ import asyncio
 import string
 import secrets
 import requests
+import csv
+import io
 from datetime import datetime, timedelta
-from flask import Flask, send_from_directory, request, jsonify, render_template, abort, flash, redirect, url_for
+from flask import Flask, send_from_directory, request, jsonify, render_template, abort, flash, redirect, url_for, Response, current_app, session
 from flask_socketio import SocketIO, emit
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from flask_mail import Mail, Message
@@ -64,7 +66,7 @@ def calculate_uptime(start_time):
         return f"{minutes}m"
 
 # Import database models
-from models import db, bcrypt, User, Experiment, Booking, Session, Device, OTAUpdate, PasswordResetToken, DeviceMetric, SystemLog, LabPi, LabPiHeartbeat
+from models import db, bcrypt, User, Experiment, Booking, Session, Device, OTAUpdate, PasswordResetToken, DeviceMetric, SystemLog, LabPi, LabPiHeartbeat, Department
 
 # Import UPS monitoring
 try:
@@ -92,9 +94,13 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'your-email@gmail.com'
-app.config['MAIL_PASSWORD'] = 'your-app-password'
-app.config['MAIL_DEFAULT_SENDER'] = 'your-email@gmail.com'
+app.config['MAIL_USERNAME'] = 'patilkumarabhi@gmail.com'
+app.config['MAIL_PASSWORD'] = 'soqj jdif cwsc eyxf'
+app.config['MAIL_DEFAULT_SENDER'] = 'patilkumarabhi@gmail.com'
+
+# Google OAuth configuration
+app.config['GOOGLE_CLIENT_ID'] = '648412093748-dq86s6ti7sn1n2651mmbvkerkjtd9hgk.apps.googleusercontent.com'
+app.config['GOOGLE_CLIENT_SECRET'] = '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'
 
 socketio = SocketIO(app, async_mode='threading')
 login_manager = LoginManager(app)
@@ -112,32 +118,141 @@ db.init_app(app)
 bcrypt.init_app(app)
 
 def migrate_lab_pi_columns():
-    """Add missing columns to lab_pi table if they don't exist"""
+    """Add missing columns to lab_pi and user tables if they don't exist"""
     from sqlalchemy import text
+    
+    # Migrate lab_pi table
     try:
-        # Add device_type column
         db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN device_type VARCHAR(50) DEFAULT "Raspberry Pi"'))
         db.session.commit()
     except Exception:
         db.session.rollback()
     
     try:
-        # Add firmware_version column
         db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN firmware_version VARCHAR(20) DEFAULT "1.0"'))
         db.session.commit()
     except Exception:
         db.session.rollback()
     
     try:
-        # Add hardware_version column
         db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN hardware_version VARCHAR(20)'))
         db.session.commit()
     except Exception:
         db.session.rollback()
     
     try:
-        # Add location column
         db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN location VARCHAR(100)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    # Migrate user table - new profile fields
+    try:
+        db.session.execute(text('ALTER TABLE user ADD COLUMN username VARCHAR(50)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE user ADD COLUMN phone_number VARCHAR(20)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE user ADD COLUMN profile_picture VARCHAR(255)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE user ADD COLUMN sr_number VARCHAR(50)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE user ADD COLUMN course_id VARCHAR(50)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE user ADD COLUMN course_name VARCHAR(100)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE user ADD COLUMN department_id INTEGER'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE user ADD COLUMN company_college_name VARCHAR(200)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE user ADD COLUMN google_id VARCHAR(100)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE user ADD COLUMN oauth_provider VARCHAR(20)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE user ADD COLUMN profile_complete BOOLEAN DEFAULT 0'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    # Migrate lab_pi table - camera support
+    try:
+        db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN pi_camera_enabled BOOLEAN DEFAULT 0'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN pi_camera_port INTEGER DEFAULT 8080'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN usb_camera_enabled BOOLEAN DEFAULT 0'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN usb_camera_device VARCHAR(50)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN usb_camera_port INTEGER DEFAULT 8081'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    try:
+        db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN active_camera VARCHAR(20) DEFAULT "none"'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    
+    # Migrate lab_pi table - department
+    try:
+        db.session.execute(text('ALTER TABLE lab_pi ADD COLUMN department_id INTEGER'))
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -227,6 +342,33 @@ def run_session_monitor():
                     
                     print(f"DB Session {session_key} expired, relay turned off, booking marked as COMPLETED")
                     relay_off()
+                    
+                    # Send session report email for expired sessions
+                    try:
+                        user = User.query.get(session.user_id)
+                        booking = Booking.query.filter_by(session_key=session_key).first()
+                        experiment_name = booking.experiment.name if booking and booking.experiment else 'Unknown'
+                        
+                        # Find Lab Pi for data retrieval
+                        csv_data = None
+                        if booking:
+                            lab_pi = LabPi.query.filter_by(experiment_id=booking.experiment_id).first()
+                            if lab_pi and lab_pi.ip_address:
+                                csv_data = fetch_session_data_from_lab_pi(lab_pi.ip_address, session_key)
+                        
+                        if user and user.email:
+                            send_session_report_email(
+                                user_email=user.email,
+                                session_key=session_key,
+                                experiment_name=experiment_name,
+                                booking_id=booking.id if booking else 'N/A',
+                                start_time=session.start_time,
+                                end_time=session.end_time,
+                                duration=session.duration,
+                                csv_data=csv_data
+                            )
+                    except Exception as e:
+                        print(f"[SESSION REPORT] Failed to send report for expired session {session_key}: {e}")
                 
                 if expired_db_sessions:
                     db.session.commit()
@@ -400,15 +542,167 @@ def list_serial_ports():
 def generate_session_key():
     return ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
 
-def send_email(to, subject, template):
+def generate_ics_calendar(experiment_name, start_time, end_time, booking_id, session_key, access_link):
+    """Generate ICS calendar file content for the booking"""
+    from datetime import datetime
+    
+    # Format times for ICS (UTC format)
+    start_dt = start_time.strftime('%Y%m%dT%H%M%S') if isinstance(start_time, datetime) else start_time.replace('-', '').replace(':', '')
+    end_dt = end_time.strftime('%Y%m%dT%H%M%S') if isinstance(end_time, datetime) else end_time.replace('-', '').replace(':', '')
+    
+    ics_content = f"""BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Virtual Lab Booking//EN
+BEGIN:VEVENT
+UID:booking-{booking_id}@virtuallab.com
+DTSTAMP:{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}Z
+DTSTART:{start_dt}
+DTEND:{end_dt}
+SUMMARY:Virtual Lab - {experiment_name}
+DESCRIPTION:Your virtual lab booking is confirmed.\\nExperiment: {experiment_name}\\nBooking ID: {booking_id}\\nSession Key: {session_key}\\nAccess Link: {access_link}
+LOCATION:{access_link}
+STATUS:CONFIRMED
+BEGIN:VALARM
+TRIGGER:-PT30M
+ACTION:DISPLAY
+DESCRIPTION:Reminder: Your virtual lab session starts in 30 minutes
+END:VALARM
+END:VEVENT
+END:VCALENDAR"""
+    return ics_content
+
+def send_email(to, subject, template, attachment=None, attachment_filename=None, attachment_content_type=None):
     try:
         msg = Message(subject, recipients=[to])
         msg.html = template
+        
+        # Add attachment if provided (supports ICS calendar, CSV, or custom content type)
+        if attachment and attachment_filename:
+            content_type = attachment_content_type or 'text/calendar'
+            msg.attach(filename=attachment_filename, content_type=content_type, data=attachment)
+        
         mail.send(msg)
+        print(f"[EMAIL] Sent successfully to: {to}")
         return True
     except Exception as e:
-        print(f"Email sending failed: {e}")
+        print(f"[EMAIL ERROR] Failed to send to {to}: {e}")
+        import traceback
+        traceback.print_exc()
         return False
+
+# ---------- SESSION REPORT EMAIL ----------
+def send_session_report_email(user_email, session_key, experiment_name, booking_id, start_time, end_time, duration, csv_data=None):
+    """
+    Send a session report email to the user after a session closes.
+    Includes session details and an attached CSV of sensor data if available.
+    """
+    try:
+        user = User.query.filter_by(email=user_email).first()
+        user_name = user.full_name if user and user.full_name else user_email.split('@')[0]
+        
+        subject = f'Virtual Lab Session Report - {experiment_name}'
+        
+        # Format times
+        start_str = start_time.strftime('%Y-%m-%d %H:%M:%S') if start_time else 'N/A'
+        end_str = end_time.strftime('%Y-%m-%d %H:%M:%S') if end_time else 'N/A'
+        duration_str = f'{duration} minutes' if duration else 'N/A'
+        
+        template = f'''
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #2c3e50;">Virtual Lab Session Report</h2>
+            
+            <p>Dear {user_name},</p>
+            
+            <p>Your virtual lab session has been completed. Here is a summary of your session:</p>
+            
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Experiment</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">{experiment_name}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Booking ID</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">{booking_id}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Session Key</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">{session_key}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Start Time</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">{start_str}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>End Time</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">{end_str}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Duration</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">{duration_str}</td>
+                </tr>
+            </table>
+            
+            {"<p style='color: #27ae60;'><strong>Sensor data from your session is attached as a CSV file.</strong></p>" if csv_data else "<p style='color: #e67e22;'>No sensor data was recorded during this session.</p>"}
+            
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                <p style="margin: 0;"><strong>Session Summary:</strong></p>
+                <ul style="margin: 10px 0 0 0;">
+                    <li>Your experiment session has been completed successfully</li>
+                    {"<li>Session data has been exported and attached to this email</li>" if csv_data else ""}
+                    <li>You can book another session from the Virtual Lab portal</li>
+                </ul>
+            </div>
+            
+            <p style="color: #7f8c8d; font-size: 14px;">Thank you for using Virtual Lab!</p>
+            
+            <p style="color: #7f8c8d; font-size: 14px;">Best regards,<br>Virtual Lab Team</p>
+        </div>
+        '''
+        
+        # Send email with CSV attachment if data is available
+        if csv_data:
+            csv_filename = f'session_{session_key}_data.csv'
+            send_email(
+                user_email,
+                subject,
+                template,
+                attachment=csv_data,
+                attachment_filename=csv_filename,
+                attachment_content_type='text/csv'
+            )
+        else:
+            send_email(user_email, subject, template)
+        
+        print(f"[SESSION REPORT] Report email sent to {user_email} for session {session_key}")
+        return True
+        
+    except Exception as e:
+        print(f"[SESSION REPORT ERROR] Failed to send session report email: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def fetch_session_data_from_lab_pi(lab_pi_ip, session_key):
+    """
+    Fetch sensor data CSV from Lab Pi for a given session.
+    Returns the CSV content as string, or None if unavailable.
+    """
+    try:
+        lab_pi_url = f"http://{lab_pi_ip}:10000"
+        response = requests.get(
+            f"{lab_pi_url}/api/lab-pi/session-data/{session_key}",
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.text
+        else:
+            print(f"[SESSION DATA] No data returned from Lab Pi for session {session_key}: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"[SESSION DATA] Failed to fetch session data from Lab Pi: {e}")
+        return None
+
 
 # ---------- USER AUTHENTICATION ----------
 @login_manager.user_loader
@@ -437,6 +731,115 @@ def login():
             flash('Invalid email or password', 'danger')
     
     return render_template('login.html')
+
+# ============ GOOGLE OAUTH 2.0 LOGIN ============
+@app.route('/login/google')
+def google_login():
+    """Initiate Google OAuth login flow"""
+    google_client_id = current_app.config.get('GOOGLE_CLIENT_ID')
+    if not google_client_id:
+        flash('Google OAuth not configured', 'danger')
+        return redirect(url_for('login'))
+    
+    # Generate state token for security
+    state = secrets.token_hex(16)
+    session['oauth_state'] = state
+    
+    # Build Google OAuth URL
+    redirect_uri = url_for('google_callback', _external=True)
+    google_auth_url = (
+        'https://accounts.google.com/o/oauth2/v2/auth?'
+        f'client_id={google_client_id}&'
+        f'redirect_uri={redirect_uri}&'
+        f'response_type=code&'
+        f'scope=openid email profile&'
+        f'state={state}&'
+        f'access_type=offline'
+    )
+    return redirect(google_auth_url)
+
+@app.route('/login/google/callback')
+def google_callback():
+    """Handle Google OAuth callback"""
+    # Verify state token
+    state = session.get('oauth_state')
+    if not state or state != request.args.get('state'):
+        flash('Invalid OAuth state', 'danger')
+        return redirect(url_for('login'))
+    
+    session.pop('oauth_state', None)
+    
+    # Exchange authorization code for tokens
+    code = request.args.get('code')
+    if not code:
+        flash('Authorization failed', 'danger')
+        return redirect(url_for('login'))
+    
+    google_client_id = current_app.config.get('GOOGLE_CLIENT_ID')
+    google_client_secret = current_app.config.get('GOOGLE_CLIENT_SECRET')
+    redirect_uri = url_for('google_callback', _external=True)
+    
+    # Get tokens from Google
+    token_url = 'https://oauth2.googleapis.com/token'
+    token_data = {
+        'code': code,
+        'client_id': google_client_id,
+        'client_secret': google_client_secret,
+        'redirect_uri': redirect_uri,
+        'grant_type': 'authorization_code'
+    }
+    
+    try:
+        token_response = requests.post(token_url, data=token_data)
+        token_json = token_response.json()
+        
+        if 'access_token' not in token_json:
+            flash('Failed to authenticate with Google', 'danger')
+            return redirect(url_for('login'))
+        
+        access_token = token_json['access_token']
+        id_token = token_json.get('id_token', '')
+        
+        # Get user info from Google
+        user_info_url = 'https://www.googleapis.com/oauth2/v2/userinfo'
+        headers = {'Authorization': f'Bearer {access_token}'}
+        user_response = requests.get(user_info_url, headers=headers)
+        google_user = user_response.json()
+        
+        if 'email' not in google_user:
+            flash('Failed to get user info from Google', 'danger')
+            return redirect(url_for('login'))
+        
+        # Find or create user
+        user = User.query.filter_by(email=google_user['email'].lower()).first()
+        
+        if not user:
+            # Create new user from Google data
+            user = User(
+                email=google_user['email'].lower(),
+                full_name=google_user.get('name', 'User'),
+                google_id=google_user.get('id', ''),
+                oauth_provider='google',
+                active=True
+            )
+            db.session.add(user)
+        else:
+            # Update existing user with Google info
+            user.google_id = google_user.get('id', '')
+            user.oauth_provider = 'google'
+        
+        user.last_login_at = datetime.utcnow()
+        user.last_login_ip = request.remote_addr
+        db.session.commit()
+        
+        login_user(user)
+        flash('Successfully logged in with Google!', 'success')
+        return redirect(url_for('index'))
+        
+    except Exception as e:
+        print(f"Google OAuth error: {e}")
+        flash('Authentication failed', 'danger')
+        return redirect(url_for('login'))
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
@@ -474,6 +877,39 @@ def signup():
         return redirect(url_for('login'))
     
     return render_template('signup.html')
+
+# ---------- USER PROFILE ----------
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    """User profile page with edit functionality"""
+    user = User.query.get(current_user.id)
+    
+    if request.method == 'POST':
+        user.full_name = request.form.get('full_name', '').strip()
+        user.username = request.form.get('username', '').strip()
+        user.phone_number = request.form.get('phone_number', '').strip()
+        user.sr_number = request.form.get('sr_number', '').strip() or None
+        user.course_id = request.form.get('course_id', '').strip() or None
+        user.course_name = request.form.get('course_name', '').strip() or None
+        user.company_college_name = request.form.get('company_college', '').strip() or None
+        
+        # Handle profile picture upload
+        if 'profile_picture' in request.files:
+            file = request.files['profile_picture']
+            if file and file.filename:
+                filename = secure_filename(f"user_{user.id}_{file.filename}")
+                upload_path = os.path.join('static', 'uploads', 'profiles')
+                os.makedirs(upload_path, exist_ok=True)
+                file.save(os.path.join(upload_path, filename))
+                user.profile_picture = f'/static/uploads/profiles/{filename}'
+        
+        user.profile_complete = True
+        db.session.commit()
+        flash('Profile updated successfully!', 'success')
+        return redirect(url_for('profile'))
+    
+    return render_template('profile.html', user=user)
 
 @app.route('/logout')
 @login_required
@@ -1231,14 +1667,52 @@ def delete_experiment(exp_id):
     
     return redirect(url_for('manage_experiments'))
 
+@app.route('/admin/experiments/edit/<int:exp_id>', methods=['GET', 'POST'])
+@login_required
+def edit_experiment(exp_id):
+    if not current_user.is_admin:
+        abort(403)
+    
+    experiment = Experiment.query.get(exp_id)
+    if not experiment:
+        flash('Experiment not found', 'danger')
+        return redirect(url_for('manage_experiments'))
+    
+    if request.method == 'POST':
+        experiment.name = request.form['name']
+        experiment.description = request.form['description']
+        experiment.max_duration = int(request.form['max_duration'])
+        experiment.price = float(request.form['price'])
+        experiment.active = 'active' in request.form
+        db.session.commit()
+        flash('Experiment updated successfully', 'success')
+        return redirect(url_for('manage_experiments'))
+    
+    return render_template('admin/edit_experiment.html', experiment=experiment)
+
 @app.route('/admin/users')
 @login_required
 def manage_users():
     if not current_user.is_admin:
         abort(403)
     
-    users = User.query.all()
-    return render_template('admin/users.html', users=users)
+    # Get search query
+    search_query = request.args.get('search', '').strip()
+    
+    # Base query
+    query = User.query
+    
+    # Apply search filter
+    if search_query:
+        query = query.filter(
+            db.or_(
+                User.full_name.ilike(f'%{search_query}%'),
+                User.email.ilike(f'%{search_query}%')
+            )
+        )
+    
+    users = query.order_by(User.created_at.desc()).all()
+    return render_template('admin/users.html', users=users, search_query=search_query)
 
 @app.route('/admin/users/delete/<int:user_id>')
 @login_required
@@ -1248,13 +1722,382 @@ def delete_user(user_id):
     
     user = User.query.get(user_id)
     if user and not user.is_admin:  # Prevent deleting admin
-        db.session.delete(user)
-        db.session.commit()
-        flash('User deleted successfully', 'success')
+        try:
+            # Delete associated bookings first
+            Booking.query.filter_by(user_id=user_id).delete()
+            
+            # Delete associated sessions
+            Session.query.filter_by(user_id=user_id).delete()
+            
+            # Delete password reset tokens
+            PasswordResetToken.query.filter_by(user_id=user_id).delete()
+            
+            # Now delete the user
+            db.session.delete(user)
+            db.session.commit()
+            flash('User deleted successfully', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error deleting user: {str(e)}', 'danger')
     else:
         flash('User not found or cannot be deleted', 'danger')
     
     return redirect(url_for('manage_users'))
+
+@app.route('/admin/users/edit/<int:user_id>', methods=['GET', 'POST'])
+@login_required
+def edit_user(user_id):
+    if not current_user.is_admin:
+        abort(403)
+    
+    user = User.query.get(user_id)
+    if not user:
+        flash('User not found', 'danger')
+        return redirect(url_for('manage_users'))
+    
+    if request.method == 'POST':
+        user.full_name = request.form.get('full_name', user.full_name)
+        user.phone_number = request.form.get('phone_number', None) or None
+        user.sr_number = request.form.get('sr_number', None) or None
+        user.course_id = request.form.get('course_id', None) or None
+        user.course_name = request.form.get('course_name', None) or None
+        user.company_college_name = request.form.get('company_college_name', None) or None
+        user.active = 'active' in request.form
+        
+        # Handle password reset
+        new_password = request.form.get('new_password', '')
+        if new_password:
+            user.password = new_password
+        
+        db.session.commit()
+        flash('User updated successfully', 'success')
+        return redirect(url_for('manage_users'))
+    
+    return render_template('admin/edit_user.html', user=user)
+
+@app.route('/admin/users/view/<int:user_id>')
+@login_required
+def view_user(user_id):
+    if not current_user.is_admin:
+        abort(403)
+    
+    user = User.query.get(user_id)
+    if not user:
+        flash('User not found', 'danger')
+        return redirect(url_for('manage_users'))
+    
+    return render_template('admin/view_user.html', user=user)
+
+# ============ BULK USER REGISTRATION ============
+@app.route('/admin/users/bulk-upload', methods=['GET', 'POST'])
+@login_required
+def bulk_user_upload():
+    """Bulk upload users via CSV file"""
+    if not current_user.is_admin:
+        abort(403)
+    
+    if request.method == 'POST':
+        if 'csv_file' not in request.files:
+            flash('No file selected', 'danger')
+            return redirect(request.url)
+        
+        file = request.files['csv_file']
+        if file.filename == '':
+            flash('No file selected', 'danger')
+            return redirect(request.url)
+        
+        if not file.filename.endswith('.csv'):
+            flash('Please upload a CSV file', 'danger')
+            return redirect(request.url)
+        
+        try:
+            # Parse CSV file
+            stream = io.StringIO(file.stream.read().decode('UTF8'))
+            csv_reader = csv.DictReader(stream)
+            
+            users_created = 0
+            users_skipped = 0
+            errors = []
+            
+            # Track password for each successful user
+            user_passwords = []
+            
+            for row_num, row in enumerate(csv_reader, start=2):
+                try:
+                    # Required fields
+                    email = row.get('Email', '').strip().lower()
+                    name = row.get('Name', '').strip()
+                    sr_number = row.get('SR Number', '').strip()
+                    
+                    if not email or not name:
+                        errors.append(f"Row {row_num}: Missing required fields (Email/Name)")
+                        users_skipped += 1
+                        continue
+                    
+                    # Check if user already exists
+                    if User.query.filter_by(email=email).first():
+                        errors.append(f"Row {row_num}: Email '{email}' already exists")
+                        users_skipped += 1
+                        continue
+                    
+                    # Optional fields
+                    phone = row.get('Phone Number', '').strip()
+                    course_id = row.get('Course ID', '').strip()
+                    course_name = row.get('Course Name', '').strip()
+                    department_name = row.get('Department Name', '').strip()
+                    company_college = row.get('Company/College Name', '').strip()
+                    
+                    # Find or create department
+                    department = None
+                    if department_name:
+                        department = Department.query.filter(
+                            db.or_(
+                                Department.name == department_name,
+                                Department.code == department_name.upper()
+                            )
+                        ).first()
+                    
+                    # Note: Users will set their own password using forgot password
+                    # No temporary password generated
+                    
+                    try:
+                        # Create user without setting password (user will use forgot password)
+                        user = User(
+                            email=email,
+                            full_name=name,
+                            sr_number=sr_number or None,
+                            phone_number=phone or None,
+                            course_id=course_id or None,
+                            course_name=course_name or None,
+                            department=department,
+                            company_college_name=company_college or None,
+                            active=True,
+                            profile_complete=False,
+                            password_hash='PENDING_RESET'  # Placeholder until user sets password
+                        )
+                        db.session.add(user)
+                        db.session.flush()
+                        
+                        # Send welcome email with password reset link
+                        email_subject = "Welcome to Virtual Lab - Account Created"
+                        email_body = f"""
+                        <html>
+                        <body>
+                            <h2>Welcome to Virtual Lab!</h2>
+                            <p>Hello {name},</p>
+                            <p>Your account has been created successfully by the administrator.</p>
+                            <p>To set your password, please use the forgot password feature:</p>
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
+                                <a href="{request.host_url}forgot_password" style="background: #00C4FF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">
+                                    Set Your Password
+                                </a>
+                            </div>
+                            <p>Or copy this link to your browser:<br>{request.host_url}forgot_password</p>
+                            <p><strong>Note:</strong> Click "Set Your Password" above, enter your email ({email}), and you'll receive a password reset link to create your own password.</p>
+                            <br>
+                            <p>Best regards,<br>Virtual Lab Team</p>
+                        </body>
+                        </html>
+                        """
+                        send_email(email, email_subject, email_body)
+                        users_created += 1
+                        user_passwords.append({'email': email, 'name': name, 'password': 'Use forgot password'})
+                    except ValueError as ve:
+                        # Password validation failed, create user with placeholder password
+                        user = User(
+                            email=email,
+                            full_name=name,
+                            sr_number=sr_number or None,
+                            phone_number=phone or None,
+                            course_id=course_id or None,
+                            course_name=course_name or None,
+                            department=department,
+                            company_college_name=company_college or None,
+                            active=True,
+                            profile_complete=False,
+                            password_hash='PENDING_RESET'  # Placeholder until user sets password
+                        )
+                        db.session.add(user)
+                        db.session.flush()
+                        
+                        # Send welcome email with password reset link
+                        email_subject = "Welcome to Virtual Lab - Account Created"
+                        email_body = f"""
+                        <html>
+                        <body>
+                            <h2>Welcome to Virtual Lab!</h2>
+                            <p>Hello {name},</p>
+                            <p>Your account has been created successfully by the administrator.</p>
+                            <p>To set your password, please use the forgot password feature:</p>
+                            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
+                                <a href="{request.host_url}forgot_password" style="background: #00C4FF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">
+                                    Set Your Password
+                                </a>
+                            </div>
+                            <p>Or copy this link to your browser:<br>{request.host_url}forgot_password</p>
+                            <p><strong>Note:</strong> Click "Set Your Password" above, enter your email ({email}), and you'll receive a password reset link to create your own password.</p>
+                            <br>
+                            <p>Best regards,<br>Virtual Lab Team</p>
+                        </body>
+                        </html>
+                        """
+                        send_email(email, email_subject, email_body)
+                        users_created += 1
+                        user_passwords.append({'email': email, 'name': name, 'password': 'Use forgot password'})
+                    
+                except Exception as e:
+                    errors.append(f"Row {row_num}: {str(e)}")
+                    users_skipped += 1
+            
+            db.session.commit()
+            
+            message = f'Created {users_created} users. Skipped {users_skipped} users.'
+            emails_sent = sum(1 for up in user_passwords if up.get('email_sent', False))
+            
+            if user_passwords:
+                # Save passwords to a file for admin to download
+                import csv as csv_module
+                password_file = os.path.join('uploads', f'user_passwords_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv')
+                with open(password_file, 'w', newline='') as f:
+                    writer = csv_module.writer(f)
+                    writer.writerow(['Email', 'Name', 'Generated Password'])
+                    for up in user_passwords:
+                        writer.writerow([up['email'], up['name'], up['password']])
+                flash(f'{message} Welcome emails have been sent to all users.', 'success')
+            elif errors:
+                flash(f'{message} See logs for details.', 'warning')
+                print(f"CSV Import Errors: {errors}")
+            else:
+                flash(message, 'success')
+            
+            return redirect(url_for('manage_users'))
+            
+        except Exception as e:
+            flash(f'Error processing CSV: {str(e)}', 'danger')
+            print(f"CSV Import Error: {e}")
+    
+    return render_template('admin/bulk_user_upload.html')
+
+@app.route('/admin/users/download-template')
+@login_required
+def download_csv_template():
+    """Download CSV template for bulk user registration"""
+    if not current_user.is_admin:
+        abort(403)
+    
+    template = "Name,Email,Phone Number,SR Number,Course ID,Course Name,Department Name,Company/College Name\n"
+    template += "John Doe,john.doe@example.com,9876543210,SR001,CSE101,B.Tech Computer Science,Computer Science,University Name"
+    
+    return Response(
+        template,
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=user_registration_template.csv'}
+    )
+
+# ============ DEPARTMENT MANAGEMENT ============
+@app.route('/admin/departments')
+@login_required
+def manage_departments():
+    """Manage departments"""
+    if not current_user.is_admin:
+        abort(403)
+    
+    departments = Department.query.all()
+    total_lab_pis = sum(len(d.lab_pis) for d in departments)
+    total_users = sum(len(d.users) for d in departments)
+    return render_template('admin/departments.html', departments=departments, total_lab_pis=total_lab_pis, total_users=total_users)
+
+@app.route('/admin/departments/add', methods=['POST'])
+@login_required
+def add_department():
+    """Add new department"""
+    if not current_user.is_admin:
+        abort(403)
+    
+    name = request.form.get('name', '').strip()
+    code = request.form.get('code', '').strip().upper()
+    description = request.form.get('description', '').strip()
+    
+    if not name or not code:
+        flash('Name and Code are required', 'danger')
+        return redirect(url_for('manage_departments'))
+    
+    if Department.query.filter_by(code=code).first():
+        flash('Department code already exists', 'danger')
+        return redirect(url_for('manage_departments'))
+    
+    department = Department(
+        name=name,
+        code=code,
+        description=description or None
+    )
+    db.session.add(department)
+    db.session.commit()
+    
+    flash('Department added successfully', 'success')
+    return redirect(url_for('manage_departments'))
+
+@app.route('/admin/departments/edit/<int:dept_id>', methods=['POST'])
+@login_required
+def edit_department(dept_id):
+    """Edit department"""
+    if not current_user.is_admin:
+        abort(403)
+    
+    department = Department.query.get(dept_id)
+    if not department:
+        flash('Department not found', 'danger')
+        return redirect(url_for('manage_departments'))
+    
+    name = request.form.get('name', '').strip()
+    code = request.form.get('code', '').strip().upper()
+    description = request.form.get('description', '').strip()
+    active = request.form.get('active') == 'on'
+    
+    if not name or not code:
+        flash('Name and Code are required', 'danger')
+        return redirect(url_for('manage_departments'))
+    
+    # Check if code already exists (excluding this department)
+    existing = Department.query.filter(
+        Department.code == code,
+        Department.id != dept_id
+    ).first()
+    if existing:
+        flash('Department code already exists', 'danger')
+        return redirect(url_for('manage_departments'))
+    
+    department.name = name
+    department.code = code
+    department.description = description or None
+    department.active = active
+    db.session.commit()
+    
+    flash('Department updated successfully', 'success')
+    return redirect(url_for('manage_departments'))
+
+@app.route('/admin/departments/delete/<int:dept_id>', methods=['POST'])
+@login_required
+def delete_department(dept_id):
+    """Delete department"""
+    if not current_user.is_admin:
+        abort(403)
+    
+    department = Department.query.get(dept_id)
+    if not department:
+        flash('Department not found', 'danger')
+        return redirect(url_for('manage_departments'))
+    
+    # Check if department has associated users or lab pis
+    if department.users.count() > 0 or department.lab_pis.count() > 0:
+        flash('Cannot delete department with associated users or Lab Pis. Please reassign them first.', 'danger')
+        return redirect(url_for('manage_departments'))
+    
+    db.session.delete(department)
+    db.session.commit()
+    
+    flash('Department deleted successfully', 'success')
+    return redirect(url_for('manage_departments'))
 
 @app.route('/admin/bookings')
 @login_required
@@ -1262,8 +2105,33 @@ def manage_bookings():
     if not current_user.is_admin:
         abort(403)
     
-    bookings = Booking.query.all()
-    return render_template('admin/bookings.html', bookings=bookings)
+    # Get filter parameters
+    status_filter = request.args.get('status', '')
+    user_filter = request.args.get('user', '')
+    experiment_filter = request.args.get('experiment', '')
+    date_filter = request.args.get('date', '')
+    
+    # Base query
+    query = Booking.query
+    
+    # Apply filters
+    if status_filter:
+        query = query.filter(Booking.status == status_filter)
+    if user_filter:
+        query = query.join(User).filter(User.full_name.ilike(f'%{user_filter}%'))
+    if experiment_filter:
+        query = query.join(Experiment).filter(Experiment.name.ilike(f'%{experiment_filter}%'))
+    if date_filter:
+        query = query.filter(db.func.date(Booking.start_time) == date_filter)
+    
+    bookings = query.order_by(Booking.start_time.desc()).all()
+    
+    # Get all users and experiments for filter dropdowns
+    users = User.query.all()
+    experiments = Experiment.query.all()
+    
+    return render_template('admin/bookings.html', bookings=bookings, users=users, experiments=experiments,
+                         current_status=status_filter, current_user=user_filter, current_experiment=experiment_filter, current_date=date_filter)
 
 @app.route('/admin/bookings/delete/<int:booking_id>')
 @login_required
@@ -1303,8 +2171,29 @@ def manage_sessions():
     
     db.session.commit()
     
-    sessions = Session.query.all()
-    return render_template('admin/sessions.html', sessions=sessions)
+    # Get filter parameters
+    status_filter = request.args.get('status', '')
+    user_filter = request.args.get('user', '')
+    date_filter = request.args.get('date', '')
+    
+    # Base query
+    query = Session.query
+    
+    # Apply filters
+    if status_filter:
+        query = query.filter(Session.status == status_filter)
+    if user_filter:
+        query = query.join(User).filter(User.full_name.ilike(f'%{user_filter}%'))
+    if date_filter:
+        query = query.filter(db.func.date(Session.start_time) == date_filter)
+    
+    sessions = query.order_by(Session.start_time.desc()).all()
+    
+    # Get all users for filter dropdown
+    users = User.query.all()
+    
+    return render_template('admin/sessions.html', sessions=sessions, users=users,
+                         current_status=status_filter, current_user=user_filter, current_date=date_filter)
 
 @app.route('/admin/sessions/delete/<int:session_id>')
 @login_required
@@ -1370,7 +2259,7 @@ def index():
             elif booking.status == 'IN_PROGRESS':
                 # Calculate duration from start and end time
                 duration = (booking.end_time - booking.start_time).total_seconds() // 60
-                # Mark as COMPLETED if end_time has passed OR if started_at + duration has passed
+                # Mark as COMPLETED only if end_time has passed OR if started_at + duration has passed
                 if now > booking.end_time:
                     booking.status = 'COMPLETED'
                     booking.completed_at = datetime.now()
@@ -1386,7 +2275,12 @@ def index():
         
         db.session.commit()
     
-    return render_template('homepage.html', experiments=experiments, bookings=bookings)
+    # Separate bookings by status for homepage
+    upcoming_statuses = ['UPCOMING', 'ACTIVE', 'IN_PROGRESS']
+    upcoming_bookings = [b for b in bookings if b.status in upcoming_statuses] if current_user.is_authenticated else []
+    completed_bookings = [b for b in bookings if b.status == 'COMPLETED'] if current_user.is_authenticated else []
+    
+    return render_template('homepage.html', experiments=experiments, upcoming_bookings=upcoming_bookings, bookings_count={'upcoming': len(upcoming_bookings), 'completed': len(completed_bookings)})
 
 @app.route('/experiment')
 @login_required
@@ -1807,20 +2701,90 @@ def book_experiment(exp_id):
             flash('Error creating booking. Please try again.', 'danger')
             return redirect(url_for('book_experiment', exp_id=exp_id))
         
-        # Send confirmation email
-        subject = 'Booking Confirmed'
-        template = f'''
-            <h1>Booking Confirmed!</h1>
-            <p>Your booking for {experiment.name} has been confirmed.</p>
-            <p><strong>Date:</strong> {slot_date}</p>
-            <p><strong>Time:</strong> {selected_slot}</p>
-            <p><strong>Duration:</strong> {duration} minutes</p>
-            <p><strong>Session Key:</strong> {session_key}</p>
-            <p>You will receive a reminder email 30 minutes before your session starts.</p>
-        '''
-        send_email(current_user.email, subject, template)
+        # Send confirmation email with calendar invite - wrapped in try-except to ensure booking succeeds
+        try:
+            subject = 'Virtual Lab Booking Confirmed - ' + experiment.name
+            
+            # Generate access link - simplified
+            access_link = f"http://10.114.62.73:5000/experiment?key={session_key}"
+            
+            # Generate ICS calendar
+            ics_content = generate_ics_calendar(
+                experiment.name,
+                start_time,
+                end_time,
+                booking.id,
+                session_key,
+                access_link
+            )
+            
+            template = f'''
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #2c3e50;">Virtual Lab Booking Confirmed!</h2>
+                
+                <p>Dear {current_user.full_name or current_user.email.split('@')[0]},</p>
+                
+                <p>Your virtual lab booking has been confirmed!</p>
+                
+                <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Experiment</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{experiment.name}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Date</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{slot_date}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Time</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{selected_slot}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Duration</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{duration} minutes</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Booking ID</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{booking.id}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Access Link</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">
+                            <a href="{access_link}" style="color: #3498db;">{access_link}</a>
+                        </td>
+                    </tr>
+                </table>
+                
+                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                    <p style="margin: 0;"><strong>Please make sure to:</strong></p>
+                    <ul style="margin: 10px 0 0 0;">
+                        <li>Join the session on time</li>
+                        <li>Have your system setup ready</li>
+                        
+                    </ul>
+                </div>
+                
+                <p style="color: #7f8c8d; font-size: 14px;">A calendar invite has been attached to help you remember this session.</p>
+                
+                <p style="color: #7f8c8d; font-size: 14px;">Best regards,<br>Virtual Lab Team</p>
+            </div>
+            '''
+            
+            # Send email with ICS attachment
+            send_email(
+                current_user.email, 
+                subject, 
+                template,
+                attachment=ics_content,
+                attachment_filename=f'booking_{booking.id}.ics'
+            )
+            
+            flash('Booking confirmed! Check your email for details.', 'success')
+        except Exception as e:
+            print(f"[EMAIL ERROR] Booking confirmation email failed: {e}")
+            # Continue without failing the booking
+            flash('Booking confirmed!', 'success')
         
-        flash('Booking confirmed! Check your email for details.', 'success')
         return redirect(url_for('my_bookings'))
     
     return render_template('book.html', experiment=experiment)
@@ -1843,15 +2807,30 @@ def my_bookings():
         elif booking.status == 'ACTIVE':
             if now > booking.end_time:
                 booking.status = 'EXPIRED'
-            elif booking.status == 'IN_PROGRESS':
-                # Calculate duration from start and end time
-                duration = (booking.end_time - booking.start_time).total_seconds() // 60
-                if booking.started_at and now > booking.started_at + timedelta(minutes=duration):
-                    booking.status = 'COMPLETED'
-                    booking.completed_at = datetime.now()
+        elif booking.status == 'IN_PROGRESS':
+            # Calculate duration from start and end time
+            duration = (booking.end_time - booking.start_time).total_seconds() // 60
+            if now > booking.end_time:
+                booking.status = 'COMPLETED'
+                booking.completed_at = datetime.now()
+            elif booking.started_at and now > booking.started_at + timedelta(minutes=duration):
+                booking.status = 'COMPLETED'
+                booking.completed_at = datetime.now()
     
     db.session.commit()
-    return render_template('my_bookings.html', bookings=bookings)
+    
+    # Separate bookings by status
+    upcoming_statuses = ['UPCOMING', 'ACTIVE', 'IN_PROGRESS']
+    cancelled_statuses = ['CANCELLED', 'EXPIRED']
+    
+    upcoming_bookings = [b for b in bookings if b.status in upcoming_statuses]
+    completed_bookings = [b for b in bookings if b.status == 'COMPLETED']
+    cancelled_bookings = [b for b in bookings if b.status in cancelled_statuses]
+    
+    return render_template('my_bookings.html', 
+                         upcoming_bookings=upcoming_bookings,
+                         completed_bookings=completed_bookings,
+                         cancelled_bookings=cancelled_bookings)
 
 @app.route('/my-bookings-data')
 @login_required
@@ -2441,12 +3420,29 @@ def lab_pi_session_end():
     lab_pi.relay_state = False
     db.session.commit()
     
+    # Gather session info for report email before updating
+    report_user_email = None
+    report_experiment_name = None
+    report_booking_id = None
+    report_start_time = None
+    report_end_time = datetime.utcnow()
+    report_duration = None
+    
     # Update session in database if exists
     session = Session.query.filter_by(session_key=session_key).first()
     if session:
         # Mark as COMPLETED when user finished normally, EXPIRED only when time ran out
         session.status = 'COMPLETED' if reason == 'completed' else ('EXPIRED' if reason == 'expired' else 'TERMINATED')
         session.end_time = datetime.utcnow()
+        
+        # Collect info for report email
+        user = User.query.get(session.user_id)
+        if user:
+            report_user_email = user.email
+        report_start_time = session.start_time
+        report_end_time = session.end_time
+        report_duration = session.duration
+        
         db.session.commit()
         
         # Log session end
@@ -2465,7 +3461,39 @@ def lab_pi_session_end():
     if booking:
         booking.status = 'COMPLETED' if reason == 'completed' else 'EXPIRED'
         booking.completed_at = datetime.utcnow()
+        report_booking_id = booking.id
+        if booking.experiment:
+            report_experiment_name = booking.experiment.name
         db.session.commit()
+    
+    # Send session report email (non-blocking, wrapped in try-except)
+    if report_user_email and lab_pi.ip_address:
+        try:
+            # Fetch session data from Lab Pi
+            csv_data = fetch_session_data_from_lab_pi(lab_pi.ip_address, session_key)
+            
+            # Send report email in background thread to avoid blocking
+            def send_report():
+                with app.app_context():
+                    try:
+                        send_session_report_email(
+                            user_email=report_user_email,
+                            session_key=session_key,
+                            experiment_name=report_experiment_name or 'Unknown',
+                            booking_id=report_booking_id or 'N/A',
+                            start_time=report_start_time,
+                            end_time=report_end_time,
+                            duration=report_duration,
+                            csv_data=csv_data
+                        )
+                    finally:
+                        pass  # csv_data will be GC'd when thread completes
+            
+            report_thread = threading.Thread(target=send_report, daemon=True)
+            report_thread.start()
+            
+        except Exception as e:
+            print(f"[SESSION REPORT] Failed to initiate session report: {e}")
     
     return jsonify({'success': True})
 
@@ -2740,11 +3768,20 @@ def lab_pi_send_command(lab_pi_id):
         })
     
     elif command == 'end_session':
-        # End current session
+        # End current session - save session key before clearing
+        session_key = lab_pi.current_session_key
         lab_pi.current_session_key = None
         lab_pi.session_start_time = None
         lab_pi.relay_state = False
         db.session.commit()
+        
+        # Fetch CSV data from lab-pi BEFORE calling session-end (which cleans up lab-pi data)
+        csv_data = None
+        if session_key and lab_pi.ip_address:
+            try:
+                csv_data = fetch_session_data_from_lab_pi(lab_pi.ip_address, session_key)
+            except Exception as e:
+                print(f"[SESSION DATA] Failed to fetch data before session-end: {e}")
         
         # Call lab-pi to end session and turn off relay
         if lab_pi.ip_address:
@@ -2755,8 +3792,7 @@ def lab_pi_send_command(lab_pi_id):
                     json={'state': 'off', 'bypass': True},
                     timeout=5
                 )
-                # End session on lab-pi
-                session_key = lab_pi.current_session_key
+                # End session on lab-pi (this also cleans up lab-pi sensor data)
                 if session_key:
                     requests.post(
                         f"http://{lab_pi.ip_address}:10000/api/lab-pi/session-end",
@@ -2765,6 +3801,44 @@ def lab_pi_send_command(lab_pi_id):
                     )
             except Exception as e:
                 print(f"Error calling lab-pi: {e}")
+        
+        # Send session report email for admin-terminated session
+        if session_key:
+            try:
+                session = Session.query.filter_by(session_key=session_key).first()
+                if session:
+                    session.status = 'TERMINATED'
+                    session.end_time = datetime.utcnow()
+                    db.session.commit()
+                    
+                    # Get user and booking info
+                    user = User.query.get(session.user_id)
+                    booking = Booking.query.filter_by(session_key=session_key).first()
+                    experiment_name = booking.experiment.name if booking and booking.experiment else 'Unknown'
+                    
+                    # Update booking status
+                    if booking:
+                        booking.status = 'EXPIRED'
+                        booking.completed_at = datetime.utcnow()
+                        db.session.commit()
+                    
+                    # Send report email with CSV data (already fetched above)
+                    if user and user.email:
+                        send_session_report_email(
+                            user_email=user.email,
+                            session_key=session_key,
+                            experiment_name=experiment_name,
+                            booking_id=booking.id if booking else 'N/A',
+                            start_time=session.start_time,
+                            end_time=session.end_time,
+                            duration=session.duration,
+                            csv_data=csv_data
+                        )
+                    
+                    # Explicitly clear csv_data from memory after email is sent
+                    del csv_data
+            except Exception as e:
+                print(f"[SESSION REPORT] Failed to send report for admin-terminated session {session_key}: {e}")
         
         return jsonify({
             'success': True,

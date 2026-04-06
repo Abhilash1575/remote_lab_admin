@@ -421,112 +421,6 @@
             {% endwith %}
         </div>
 
-        <div class="content-section">
-            <div class="section-header">
-                <h3>Devices</h3>
-                <button class="btn-primary" onclick="openAddModal()">
-                    <i class="fas fa-plus"></i> Add Device
-                </button>
-            </div>
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Device Name</th>
-                            <th>Type</th>
-                            <th>MAC Address</th>
-                            <th>IP Address</th>
-                            <th>Location</th>
-                            <th>Status</th>
-                            <th>Last Seen</th>
-                            <th>CPU Usage</th>
-                            <th>RAM Usage</th>
-                            <th>Temperature</th>
-                            <th>Battery</th>
-                            <th>Uptime</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for device in devices %}
-                        <tr>
-                            <td>{{ device.device_name }}</td>
-                            <td>{{ device.device_type }}</td>
-                            <td>{{ device.mac_address }}</td>
-                            <td>{{ device.ip_address }}</td>
-                            <td>{{ device.location }}</td>
-                            <td>
-                                <span class="status-badge {{ (device.status or 'unknown').lower() }}">
-                                    {{ device.status or 'UNKNOWN' }}
-                                </span>
-                            </td>
-                            <td>{{ device.last_seen.strftime('%Y-%m-%d %H:%M') if device.last_seen else '-' }}</td>
-                            <td>{{ device.cpu_usage|round(1) if device.cpu_usage is not none else '-' }}%</td>
-                            <td>{{ device.ram_usage|round(1) if device.ram_usage is not none else '-' }}%</td>
-                            <td>{{ device.temperature|round(1) if device.temperature is not none else '-' }}°C</td>
-                            <td>
-                                {% if device.battery_level %}
-                                    <div style="display: flex; flex-direction: column; gap: 1px; font-size: 0.9em;">
-                                        <span>
-                                            <strong>{{ device.battery_level|round(1) }}%</strong>
-                                            ({{ device.battery_voltage|round(2) }}V)
-                                        </span>
-                                        <span>
-                                            {% if device.ac_status %}
-                                                <span style="color: green;" title="AC Power Connected">🔌 AC Power</span>
-                                            {% else %}
-                                                <span style="color: orange;" title="Running on Battery">🔋 On Battery</span>
-                                            {% endif %}
-                                        </span>
-                                        <span style="font-size: 0.85em; color: #666;">
-                                            {% if device.charging_status %}
-                                                ⚡ Charging
-                                            {% else %}
-                                                🔋 Discharging
-                                            {% endif %}
-                                        </span>
-                                    </div>
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if device.registered_at %}
-                                    <span style="color: green; font-weight: bold;">
-                                        {{ device.registered_at|uptime }}
-                                    </span>
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                            <td class="action-buttons">
-                                <button class="btn-sm btn-view" onclick="viewDevice({{ device.id }})">
-                                    <i class="fas fa-eye"></i> View
-                                </button>
-                                <button class="btn-sm btn-edit" onclick="window.location.href='/admin/devices/edit/{{ device.id }}'">
-                                    <i class="fas fa-edit"></i> Edit
-                                </button>
-                                <button class="btn-sm {% if device.maintenance_mode %}btn-primary{% else %}btn-warning{% endif %}" 
-                                        onclick="toggleMaintenance({{ device.id }})">
-                                    <i class="fas fa-tools"></i> {% if device.maintenance_mode %}Online{% else %}Maintenance{% endif %}
-                                </button>
-                                <button class="btn-sm btn-primary" onclick="restartDevice({{ device.id }})">
-                                    <i class="fas fa-redo"></i> Restart
-                                </button>
-                                <button class="btn-sm btn-danger" onclick="rebootDevice({{ device.id }})">
-                                    <i class="fas fa-power-off"></i> Reboot
-                                </button>
-                                <button class="btn-sm btn-delete" onclick="deleteDevice({{ device.id }})">
-                                    <i class="fas fa-trash"></i> Delete
-                                </button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
         <!-- Lab Pis Section -->
         <div class="content-section">
             <div class="section-header">
@@ -624,6 +518,7 @@
             <p style="padding: 20px; color: #666;">No Lab Pi nodes registered yet.</p>
             {% endif %}
         </div>
+
     </div>
 
     <!-- Add Device Modal -->

@@ -336,6 +336,41 @@
             <div class="section-header">
                 <h3>Sessions</h3>
             </div>
+            
+            <!-- Filter Form -->
+            <form method="get" class="filter-form" style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: end;">
+                <div style="flex: 1; min-width: 150px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #484c7f;">Status</label>
+                    <select name="status" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+                        <option value="">All Statuses</option>
+                        <option value="ACTIVE" {{ 'selected' if current_status == 'ACTIVE' }}>Active</option>
+                        <option value="EXPIRED" {{ 'selected' if current_status == 'EXPIRED' }}>Expired</option>
+                        <option value="TERMINATED" {{ 'selected' if current_status == 'TERMINATED' }}>Terminated</option>
+                    </select>
+                </div>
+                <div style="flex: 1; min-width: 150px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #484c7f;">User</label>
+                    <select name="user" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+                        <option value="">All Users</option>
+                        {% for user in users %}
+                        <option value="{{ user.full_name }}" {{ 'selected' if current_user == user.full_name }}>{{ user.full_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="flex: 1; min-width: 150px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #484c7f;">Date</label>
+                    <input type="date" name="date" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px;" value="{{ current_date or '' }}">
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="submit" class="btn btn-primary" style="padding: 8px 16px;">
+                        <i class="fas fa-filter"></i> Filter
+                    </button>
+                    <a href="{{ url_for('manage_sessions') }}" class="btn btn-secondary" style="padding: 8px 16px; text-decoration: none; display: inline-block;">
+                        <i class="fas fa-times"></i> Clear
+                    </a>
+                </div>
+            </form>
+            
             <div class="table-container">
                 <table>
                     <thead>

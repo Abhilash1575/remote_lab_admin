@@ -18,8 +18,27 @@ PASSWORD_EXPIRY_DAYS = 90
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
+    password_hash = db.Column(db.String(128))
     full_name = db.Column(db.String(100), nullable=False)
+    username = db.Column(db.String(50), unique=True)
+    phone_number = db.Column(db.String(20))
+    profile_picture = db.Column(db.String(255))  # Path to profile picture
+    
+    # Educational/Professional info
+    sr_number = db.Column(db.String(50), unique=True)  # Student/Employee Registration Number
+    course_id = db.Column(db.String(50))
+    course_name = db.Column(db.String(100))
+    department_id = db.Column(db.Integer, db.ForeignKey('department.id'))
+    department = db.relationship('Department', backref='users')
+    company_college_name = db.Column(db.String(200))  # Company or College name
+    
+    # OAuth fields
+    google_id = db.Column(db.String(100), unique=True)
+    oauth_provider = db.Column(db.String(20))  # 'google', 'local'
+    
+    # Profile completeness tracking
+    profile_complete = db.Column(db.Boolean, default=False)
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     password_changed_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login_at = db.Column(db.DateTime)
@@ -215,6 +234,24 @@ class PasswordResetToken(db.Model):
         return f'<PasswordResetToken {self.token}>'
 
 
+class Department(db.Model):
+    """
+    Department - Organizes users and devices by department
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    code = db.Column(db.String(20), unique=True, nullable=False)  # e.g., 'CSE', 'ECE', 'ME'
+    description = db.Column(db.Text)
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    lab_pis = db.relationship('LabPi', backref='department', lazy=True)
+    
+    def __repr__(self):
+        return f'<Department {self.name}>'
+
+
 class LabPi(db.Model):
     """
     Lab Pi - Represents a Raspberry Pi that handles experiment hardware.
@@ -233,6 +270,9 @@ class LabPi(db.Model):
     firmware_version = db.Column(db.String(20), default='1.0')
     hardware_version = db.Column(db.String(20))
     location = db.Column(db.String(100))
+    
+    # Department association
+    department_id = db.Column(db.Integer, db.ForeignKey('department.id'))
     
     # Network identification
     mac_address = db.Column(db.String(17), nullable=True)  # Removed unique constraint - use lab_pi_id as unique identifier
@@ -275,6 +315,14 @@ class LabPi(db.Model):
     # Configuration
     api_key = db.Column(db.String(64))
     auto_register = db.Column(db.Boolean, default=True)
+    
+    # Camera configuration (dual camera support)
+    pi_camera_enabled = db.Column(db.Boolean, default=False)  # Raspberry Pi Camera
+    pi_camera_port = db.Column(db.Integer, default=8080)  # Port for Pi camera stream
+    usb_camera_enabled = db.Column(db.Boolean, default=False)  # USB Webcam
+    usb_camera_device = db.Column(db.String(50))  # e.g., /dev/video0
+    usb_camera_port = db.Column(db.Integer, default=8081)  # Port for USB camera stream
+    active_camera = db.Column(db.String(20), default='none')  # 'pi', 'usb', 'both', 'none'
     
     def __repr__(self):
         return f'<LabPi {self.lab_pi_id} - {self.name}>'
