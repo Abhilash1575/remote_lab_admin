@@ -27,7 +27,7 @@
                         </h4>
                     </div>
                     <div class="card-body">
-                        <form method="POST">
+                        <form method="POST" enctype="multipart/form-data">
                             {% if is_lab_pi %}
                             <!-- Lab Pi Specific Fields -->
                             <div class="mb-3">
@@ -89,6 +89,39 @@
                                     Hardware Ready
                                 </label>
                             </div>
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="fas fa-microchip"></i> Microcontroller Board
+                                </label>
+                                <select class="form-select" name="board_type" id="boardTypeSelect" onchange="updateBoardSelector()">
+                                    <option value="">-- Auto (from Experiment) --</option>
+                                    <option value="arduino" {% if device.board_type == 'arduino' %}selected{% endif %}>Arduino</option>
+                                    <option value="attiny" {% if device.board_type == 'attiny' %}selected{% endif %}>ATTiny</option>
+                                    <option value="stm32" {% if device.board_type == 'stm32' %}selected{% endif %}>STM32</option>
+                                    <option value="black_pill" {% if device.board_type == 'black_pill' %}selected{% endif %}>Black Pill</option>
+                                    <option value="esp32" {% if device.board_type == 'esp32' %}selected{% endif %}>ESP32</option>
+                                    <option value="esp8266" {% if device.board_type == 'esp8266' %}selected{% endif %}>ESP8266</option>
+                                    <option value="nucleo_f446re" {% if device.board_type == 'nucleo_f446re' %}selected{% endif %}>Nucleo F446RE</option>
+                                    <option value="tiva" {% if device.board_type == 'tiva' %}selected{% endif %}>Tiva</option>
+                                    <option value="tms320f28377s" {% if device.board_type == 'tms320f28377s' %}selected{% endif %}>TMS320F28377S</option>
+                                    <option value="msp430" {% if device.board_type == 'msp430' %}selected{% endif %}>MSP430</option>
+                                    <option value="generic" {% if device.board_type == 'generic' %}selected{% endif %}>Generic</option>
+                                </select>
+                                <small class="text-muted">Select specific board or leave empty to use experiment's board type</small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="fas fa-file-pdf"></i> Custom SOP (PDF)
+                                </label>
+                                <input type="file" class="form-control" name="sop_file_upload" accept=".pdf" onchange="handleSopUpload(this)">
+                                <input type="hidden" name="sop_file" value="{{ device.sop_file or '' }}">
+                                {% if device.sop_file %}
+                                <small class="text-success">Current: {{ device.sop_file }}</small>
+                                {% else %}
+                                <small class="text-muted">No SOP file uploaded</small>
+                                {% endif %}
+                                <small class="text-muted d-block">Upload a PDF file - it will be sent to lab-pi</small>
+                            </div>
                             {% else %}
                             <!-- Regular Device Fields -->
                             <div class="mb-3">
@@ -127,5 +160,45 @@
             </div>
         </div>
     </div>
+    <script>
+        // Update experiment info when experiment selection changes
+        function updateBoardSelector() {
+            var experimentSelect = document.getElementById('experimentSelect');
+            var boardTypeSelect = document.getElementById('boardTypeSelect');
+            
+            if (experimentSelect && experimentSelect.value) {
+                // When experiment changes, auto-update board type from experiment
+                var selectedOption = experimentSelect.options[experimentSelect.selectedIndex];
+                console.log('Experiment selected, board type will be synced from experiment');
+            }
+        }
+
+        // Handle SOP file upload - copy to lab-pi
+        function handleSopUpload(input) {
+            if (input.files && input.files[0]) {
+                var file = input.files[0];
+                var formData = new FormData();
+                formData.append('sop_file', file);
+                
+                fetch('/admin/sop/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Update the hidden input with the filename
+                        document.querySelector('input[name="sop_file"]').value = data.filename;
+                        alert('SOP file uploaded successfully to lab-pi: ' + data.filename);
+                    } else {
+                        alert('Failed to upload SOP file: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(err => {
+                    alert('Error uploading SOP file: ' + err);
+                });
+            }
+        }
+    </script>
 </body>
 </html>

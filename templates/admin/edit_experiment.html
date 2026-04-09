@@ -215,11 +215,6 @@
                 </div>
                 
                 <div class="form-group">
-                    <label for="price">Price ($)</label>
-                    <input type="number" id="price" name="price" value="{{ experiment.price }}" min="0" step="0.01" required>
-                </div>
-                
-                <div class="form-group">
                     <label>
                         <input type="checkbox" name="active" {% if experiment.active %}checked{% endif %}>
                         Active
@@ -239,6 +234,39 @@
     </div>
 
     <script>
+        // Handle SOP file upload - copy to lab-pi
+        function handleSopUpload(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                if (file.type !== 'application/pdf') {
+                    alert('Please select a PDF file');
+                    input.value = '';
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('sop_file', file);
+                
+                fetch('{{ url_for("upload_sop_file") }}', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('sop_file').value = data.filename;
+                        alert('SOP file uploaded successfully!');
+                    } else {
+                        alert('Failed to upload SOP file: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error uploading SOP:', error);
+                    alert('Error uploading SOP file');
+                });
+            }
+        }
+
         document.querySelectorAll('.sidebar nav ul li a').forEach(item => {
             if (item.getAttribute('href') === window.location.pathname) {
                 item.classList.add('active');

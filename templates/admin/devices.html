@@ -434,7 +434,7 @@
                             <th>Lab Pi ID</th>
                             <th>Name</th>
                             <th>Experiment</th>
-                            <th>MAC Address</th>
+                            <th>Board</th>
                             <th>IP Address</th>
                             <th>Status</th>
                             <th>CPU %</th>
@@ -459,7 +459,7 @@
                                     <span style="color: #999;">Not Assigned</span>
                                 {% endif %}
                             </td>
-                            <td>{{ lab_pi.mac_address or '-' }}</td>
+                            <td>{{ lab_pi.board_type|default('arduino')|title }}</td>
                             <td>{{ lab_pi.ip_address }}</td>
                             <td>
                                 <span class="status-badge {{ (lab_pi.status or 'unknown').lower() }}">

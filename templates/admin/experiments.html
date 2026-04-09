@@ -215,6 +215,17 @@
             color: #721c24;
         }
 
+        .board-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #e3f2fd;
+            color: #1565c0;
+            text-transform: uppercase;
+        }
+
         .action-buttons {
             display: flex;
             gap: 5px;
@@ -435,9 +446,7 @@
                     <thead>
                         <tr>
                             <th>Name</th>
-                            <th>Description</th>
                             <th>Max Duration (min)</th>
-                            <th>Price</th>
                             <th>Status</th>
                             <th>Actions</th>
                         </tr>
@@ -446,9 +455,7 @@
                         {% for exp in experiments %}
                         <tr>
                             <td>{{ exp.name }}</td>
-                            <td>{{ exp.description[:100] }}{% if exp.description|length > 100 %}...{% endif %}</td>
                             <td>{{ exp.max_duration }}</td>
-                            <td>{{ exp.price }}</td>
                             <td>
                                 <span class="status-badge {{ 'active' if exp.active else 'inactive' }}">
                                     {{ 'Active' if exp.active else 'Inactive' }}
@@ -492,10 +499,6 @@
                 <div class="form-group">
                     <label for="max_duration">Max Duration (minutes)</label>
                     <input type="number" id="max_duration" name="max_duration" required placeholder="60" min="1" max="180">
-                </div>
-                <div class="form-group">
-                    <label for="price">Price (₹)</label>
-                    <input type="number" id="price" name="price" placeholder="0" step="0.01" min="0">
                 </div>
                 <button type="submit" class="btn-primary">
                     <i class="fas fa-save"></i> Save Experiment

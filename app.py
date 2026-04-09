@@ -365,7 +365,8 @@ def run_session_monitor():
                                 start_time=session.start_time,
                                 end_time=session.end_time,
                                 duration=session.duration,
-                                csv_data=csv_data
+                                csv_data=csv_data,
+                                experiment_id=booking.experiment_id if booking else None
                             )
                     except Exception as e:
                         print(f"[SESSION REPORT] Failed to send report for expired session {session_key}: {e}")
@@ -591,10 +592,10 @@ def send_email(to, subject, template, attachment=None, attachment_filename=None,
         return False
 
 # ---------- SESSION REPORT EMAIL ----------
-def send_session_report_email(user_email, session_key, experiment_name, booking_id, start_time, end_time, duration, csv_data=None):
+def send_session_report_email(user_email, session_key, experiment_name, booking_id, start_time, end_time, duration, csv_data=None, experiment_id=None):
     """
     Send a session report email to the user after a session closes.
-    Includes session details and an attached CSV of sensor data if available.
+    Includes session details, sensor data CSV, SOP manual, and experiment screenshot.
     """
     try:
         user = User.query.filter_by(email=user_email).first()
@@ -606,6 +607,37 @@ def send_session_report_email(user_email, session_key, experiment_name, booking_
         start_str = start_time.strftime('%Y-%m-%d %H:%M:%S') if start_time else 'N/A'
         end_str = end_time.strftime('%Y-%m-%d %H:%M:%S') if end_time else 'N/A'
         duration_str = f'{duration} minutes' if duration else 'N/A'
+        
+        # Get SOP URL and Lab Pi IP for attachments
+        sop_url = None
+        lab_pi_ip = None
+        screenshot_data = None
+        sop_data = None  # Initialize for template
+        
+        # Get SOP from lab_pi device level (not experiment level)
+        lab_pi = None
+        if experiment_id:
+            experiment = Experiment.query.get(experiment_id)
+            if experiment:
+                # Get Lab Pi for this experiment
+                lab_pi = LabPi.query.filter_by(experiment_id=experiment_id).first()
+                if lab_pi and lab_pi.ip_address:
+                    lab_pi_ip = lab_pi.ip_address
+                # Get SOP from device level (lab_pi.sop_file takes precedence)
+                sop_filename = lab_pi.sop_file if lab_pi and lab_pi.sop_file else None
+                if sop_filename:
+                    if lab_pi_ip:
+                        sop_url = f"http://{lab_pi_ip}:10000/sop/{sop_filename}"
+                    else:
+                        sop_url = f"http://10.114.62.73:10000/sop/{sop_filename}"
+                # Fetch screenshot from Lab Pi if we have lab_pi_ip
+                if lab_pi_ip:
+                    try:
+                        screenshot_data = fetch_screenshot_from_lab_pi(lab_pi_ip, session_key)
+                        if screenshot_data:
+                            print(f"[SESSION REPORT] Fetched screenshot, size: {len(screenshot_data)} bytes")
+                    except Exception as e:
+                        print(f"[SESSION REPORT] Failed to fetch screenshot: {e}")
         
         template = f'''
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -644,33 +676,60 @@ def send_session_report_email(user_email, session_key, experiment_name, booking_
             
             {"<p style='color: #27ae60;'><strong>Sensor data from your session is attached as a CSV file.</strong></p>" if csv_data else "<p style='color: #e67e22;'>No sensor data was recorded during this session.</p>"}
             
+            {"<p style='color: #3498db;'><strong>📄 Experiment Manual (SOP) is attached to this email.</strong></p>" if sop_data else ""}
+            
+            {"<p style='color: #9b59b6;'><strong>📊 Experiment screenshot is attached to this email.</strong></p>" if screenshot_data else ""}
+            
             <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
                 <p style="margin: 0;"><strong>Session Summary:</strong></p>
                 <ul style="margin: 10px 0 0 0;">
                     <li>Your experiment session has been completed successfully</li>
-                    {"<li>Session data has been exported and attached to this email</li>" if csv_data else ""}
+                    {"<li>Session sensor data has been exported and attached</li>" if csv_data else ""}
+                    {"<li>Experiment manual (SOP) is attached for your reference</li>" if sop_url else ""}
                     <li>You can book another session from the Virtual Lab portal</li>
                 </ul>
             </div>
             
-            <p style="color: #7f8c8d; font-size: 14px;">Thank you for using Virtual Lab!</p>
+            <p style="color: #7f8c8d; font-size: 14px;">Thank you for choosing Virtual Lab!</p>
             
             <p style="color: #7f8c8d; font-size: 14px;">Best regards,<br>Virtual Lab Team</p>
         </div>
         '''
         
-        # Send email with CSV attachment if data is available
+        # Fetch SOP file from Lab Pi
+        sop_data = None
+        sop_filename = None
+        if sop_url:
+            try:
+                sop_response = requests.get(sop_url, timeout=10)
+                if sop_response.status_code == 200:
+                    sop_data = sop_response.content
+                    sop_filename = sop_url.split('/')[-1]
+                    print(f"[SESSION REPORT] Fetched SOP: {sop_filename}")
+            except Exception as e:
+                print(f"[SESSION REPORT] Failed to fetch SOP: {e}")
+        
+        # Send email with attachments (multiple emails for multiple attachments)
+        # CSV data
         if csv_data:
-            csv_filename = f'session_{session_key}_data.csv'
-            send_email(
-                user_email,
-                subject,
-                template,
-                attachment=csv_data,
-                attachment_filename=csv_filename,
-                attachment_content_type='text/csv'
-            )
-        else:
+            send_email(user_email, subject, template,
+                      attachment=csv_data, attachment_filename=f'session_{session_key}_data.csv',
+                      attachment_content_type='text/csv')
+        
+        # SOP PDF
+        if sop_data:
+            send_email(user_email, subject, template,
+                      attachment=sop_data, attachment_filename=f'SOP_{experiment_name}.pdf',
+                      attachment_content_type='application/pdf')
+        
+        # Screenshot PNG
+        if screenshot_data:
+            send_email(user_email, subject, template,
+                      attachment=screenshot_data, attachment_filename=f'experiment_screenshot.png',
+                      attachment_content_type='image/png')
+        
+        # If no attachments, just send the email
+        if not csv_data and not sop_data and not screenshot_data:
             send_email(user_email, subject, template)
         
         print(f"[SESSION REPORT] Report email sent to {user_email} for session {session_key}")
@@ -701,6 +760,27 @@ def fetch_session_data_from_lab_pi(lab_pi_ip, session_key):
             return None
     except Exception as e:
         print(f"[SESSION DATA] Failed to fetch session data from Lab Pi: {e}")
+        return None
+
+
+def fetch_screenshot_from_lab_pi(lab_pi_ip, session_key):
+    """
+    Fetch screenshot PNG from Lab Pi for a given session.
+    Returns the image content as bytes, or None if unavailable.
+    """
+    try:
+        lab_pi_url = f"http://{lab_pi_ip}:10000"
+        response = requests.get(
+            f"{lab_pi_url}/api/lab-pi/screenshot/{session_key}",
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.content
+        else:
+            print(f"[SCREENSHOT] No screenshot returned from Lab Pi for session {session_key}: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"[SCREENSHOT] Failed to fetch screenshot from Lab Pi: {e}")
         return None
 
 
@@ -1630,8 +1710,7 @@ def manage_experiments():
         experiment = Experiment(
             name=request.form['name'],
             description=request.form['description'],
-            max_duration=int(request.form['max_duration']),
-            price=float(request.form['price'])
+            max_duration=int(request.form['max_duration'])
         )
         db.session.add(experiment)
         db.session.commit()
@@ -1667,6 +1746,15 @@ def delete_experiment(exp_id):
     
     return redirect(url_for('manage_experiments'))
 
+@app.route('/admin/experiments/view/<int:exp_id>')
+@login_required
+def view_experiment(exp_id):
+    if not current_user.is_admin:
+        abort(403)
+    
+    experiment = Experiment.query.get_or_404(exp_id)
+    return render_template('admin/view_experiment.html', experiment=experiment)
+
 @app.route('/admin/experiments/edit/<int:exp_id>', methods=['GET', 'POST'])
 @login_required
 def edit_experiment(exp_id):
@@ -1682,13 +1770,61 @@ def edit_experiment(exp_id):
         experiment.name = request.form['name']
         experiment.description = request.form['description']
         experiment.max_duration = int(request.form['max_duration'])
-        experiment.price = float(request.form['price'])
         experiment.active = 'active' in request.form
         db.session.commit()
         flash('Experiment updated successfully', 'success')
         return redirect(url_for('manage_experiments'))
     
     return render_template('admin/edit_experiment.html', experiment=experiment)
+
+@app.route('/admin/sop/upload', methods=['POST'])
+@login_required
+def upload_sop_file():
+    if not current_user.is_admin:
+        abort(403)
+    
+    if 'sop_file' not in request.files:
+        return jsonify({'success': False, 'error': 'No file provided'})
+    
+    file = request.files['sop_file']
+    if file.filename == '':
+        return jsonify({'success': False, 'error': 'No file selected'})
+    
+    if not file.filename.lower().endswith('.pdf'):
+        return jsonify({'success': False, 'error': 'Only PDF files are allowed'})
+    
+    # Sanitize filename
+    filename = secure_filename(file.filename)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"{timestamp}_{filename}"
+    
+    # Get the assigned lab-pi for this experiment (if any)
+    experiment_id = request.form.get('experiment_id')
+    lab_pi = None
+    if experiment_id:
+        lab_pi = LabPi.query.filter_by(experiment_id=experiment_id).first()
+    
+    # Upload to lab-pi if we have its IP
+    if lab_pi and lab_pi.ip_address:
+        try:
+            files = {'file': (filename, file.read(), 'application/pdf')}
+            # Reset file pointer
+            file.seek(0)
+            files = {'file': (filename, file.read(), 'application/pdf')}
+            response = requests.post(
+                f"http://{lab_pi.ip_address}:10000/upload-sop",
+                files=files,
+                timeout=10
+            )
+            if response.status_code == 200:
+                return jsonify({'success': True, 'filename': filename})
+            else:
+                return jsonify({'success': False, 'error': f'Lab Pi upload failed: {response.status_code}'})
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Failed to upload to lab-pi: {str(e)}'})
+    else:
+        # No lab-pi assigned - just save filename to experiment
+        return jsonify({'success': True, 'filename': filename})
 
 @app.route('/admin/users')
 @login_required
@@ -2311,6 +2447,10 @@ def experiment():
     # Check if there's a session entry, create if not
     session = Session.query.filter_by(session_key=session_key).first()
     if not session:
+        # Check if booking is already completed - prevent re-entering completed session
+        if booking.status == 'COMPLETED':
+            return render_template('expired_session.html', message="This session has already been completed.")
+        
         # Calculate session duration from booking
         session_duration_minutes = (booking.end_time - booking.start_time).total_seconds() // 60
         # Use UTC time for consistency with JavaScript Date.now()
@@ -2331,6 +2471,10 @@ def experiment():
         db.session.add(session)
         booking.status = 'IN_PROGRESS'
         db.session.commit()
+    else:
+        # Session exists - check if already completed
+        if session.status == 'COMPLETED':
+            return render_template('expired_session.html', message="This session has already been completed.")
     
     # Find Lab Pi for this experiment
     lab_pi = LabPi.query.filter_by(
@@ -2348,6 +2492,20 @@ def experiment():
         lab_pi_ip = lab_pi.ip_address if lab_pi.ip_address else request.host.split(':')[0]
         lab_pi_url = f"http://{lab_pi_ip}:10000"  # Lab Pi runs on port 10000
         print(f"[EXPERIMENT] Found Lab Pi: {lab_pi.lab_pi_id} at {lab_pi_url}")
+        
+        # Get board type - device-level override takes precedence over experiment
+        exp_name = booking.experiment.name if booking.experiment else 'Unknown'
+        if lab_pi.board_type:
+            board_type = lab_pi.board_type
+        else:
+            board_type = booking.experiment.board_type if booking.experiment else 'arduino'
+        
+        # Get SOP file - device-level override takes precedence over experiment
+        if lab_pi.sop_file:
+            sop_file = lab_pi.sop_file
+        else:
+            sop_file = booking.experiment.sop_file if booking.experiment else None
+        
         # Send command to Lab Pi to start session
         try:
             response = requests.post(
@@ -2356,7 +2514,10 @@ def experiment():
                     'session_key': session_key,
                     'booking_id': booking.id,
                     'user_email': current_user.email,
-                    'session_end_time': int(booking.end_time.timestamp() * 1000)  # JS milliseconds
+                    'session_end_time': int(booking.end_time.timestamp() * 1000),  # JS milliseconds
+                    'experiment_name': exp_name,
+                    'board_type': board_type,
+                    'sop_file': sop_file
                 },
                 headers={'X-Lab-Pi-Id': lab_pi.lab_pi_id},
                 timeout=5
@@ -3427,6 +3588,7 @@ def lab_pi_session_end():
     report_start_time = None
     report_end_time = datetime.utcnow()
     report_duration = None
+    report_experiment_id = None
     
     # Update session in database if exists
     session = Session.query.filter_by(session_key=session_key).first()
@@ -3442,6 +3604,10 @@ def lab_pi_session_end():
         report_start_time = session.start_time
         report_end_time = session.end_time
         report_duration = session.duration
+        # Get experiment_id from booking
+        booking = Booking.query.filter_by(session_key=session_key).first()
+        if booking:
+            report_experiment_id = booking.experiment_id
         
         db.session.commit()
         
@@ -3484,7 +3650,8 @@ def lab_pi_session_end():
                             start_time=report_start_time,
                             end_time=report_end_time,
                             duration=report_duration,
-                            csv_data=csv_data
+                            csv_data=csv_data,
+                            experiment_id=report_experiment_id
                         )
                     finally:
                         pass  # csv_data will be GC'd when thread completes
@@ -3521,6 +3688,23 @@ def lab_pi_get_status(lab_pi_id):
         'relay_state': lab_pi.relay_state,
         'hardware_ready': lab_pi.hardware_ready,
         'uptime': lab_pi.uptime
+    })
+
+
+@app.route('/api/lab-pi/<lab_pi_id>/board-config', methods=['GET'])
+def lab_pi_get_board_config(lab_pi_id):
+    """
+    Get board configuration for a specific Lab Pi.
+    Used by lab-pi to fetch latest board_type without needing session start.
+    """
+    lab_pi = LabPi.query.filter_by(lab_pi_id=lab_pi_id).first()
+    if not lab_pi:
+        return jsonify({'error': 'Lab Pi not found'}), 404
+    
+    return jsonify({
+        'lab_pi_id': lab_pi.lab_pi_id,
+        'board_type': lab_pi.board_type or 'arduino',
+        'sop_file': lab_pi.sop_file
     })
 
 
@@ -3643,6 +3827,33 @@ def admin_lab_pi_edit(lab_pi_id):
         
         lab_pi.experiment_id = int(experiment_id) if experiment_id else None
         
+        # Update board_type (auto-sync from experiment if not manually set)
+        board_type = request.form.get('board_type')
+        if board_type:
+            lab_pi.board_type = board_type
+        elif experiment_id:
+            # Auto-sync from experiment (but experiments no longer have board_type)
+            experiment = Experiment.query.get(int(experiment_id))
+        
+        # Update custom SOP file - handle file upload
+        sop_file_upload = request.files.get('sop_file_upload')
+        if sop_file_upload and sop_file_upload.filename:
+            # Upload to lab-pi
+            try:
+                lab_pi_url = f"http://{lab_pi.ip_address}:10000" if lab_pi.ip_address else "http://10.114.62.74:10000"
+                files = {'file': (sop_file_upload.filename, sop_file_upload.read(), 'application/pdf')}
+                response = requests.post(f"{lab_pi_url}/upload-sop", files=files, timeout=10)
+                if response.status_code == 200:
+                    lab_pi.sop_file = sop_file_upload.filename
+                    print(f"[SOP UPLOAD] Uploaded {sop_file_upload.filename} to lab-pi")
+                else:
+                    print(f"[SOP UPLOAD] Failed: {response.status_code}")
+            except Exception as e:
+                print(f"[SOP UPLOAD] Error: {e}")
+        else:
+            # Check hidden input for existing filename
+            lab_pi.sop_file = request.form.get('sop_file') or None
+        
         db.session.commit()
         flash(f'Lab Pi "{lab_pi.name}" updated successfully!', 'success')
         return redirect(url_for('manage_devices'))
@@ -3750,7 +3961,13 @@ def lab_pi_send_command(lab_pi_id):
                 # Start session on lab-pi
                 requests.post(
                     f"http://{lab_pi.ip_address}:10000/api/lab-pi/session-start",
-                    json={'session_key': session_key, 'booking_id': booking_id},
+                    json={
+                        'session_key': session_key, 
+                        'booking_id': booking_id,
+                        'experiment_name': experiment.name if experiment else 'Unknown',
+                        'board_type': experiment.board_type if experiment else 'arduino',
+                        'sop_file': experiment.sop_file if experiment else None
+                    },
                     timeout=5
                 )
                 # Turn on relay
@@ -3832,7 +4049,8 @@ def lab_pi_send_command(lab_pi_id):
                             start_time=session.start_time,
                             end_time=session.end_time,
                             duration=session.duration,
-                            csv_data=csv_data
+                            csv_data=csv_data,
+                            experiment_id=booking.experiment_id if booking else None
                         )
                     
                     # Explicitly clear csv_data from memory after email is sent

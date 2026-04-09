@@ -103,6 +103,10 @@ class Experiment(db.Model):
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
+    # Board type and SOP for this experiment
+    board_type = db.Column(db.String(50), default='arduino')  # arduino, attiny, stm32, black_pill, etc.
+    sop_file = db.Column(db.String(200))  # SOP file name stored in lab-pi static/sop folder
+    
     # Relationships
     bookings = db.relationship('Booking', backref='experiment', lazy=True)
     
@@ -270,6 +274,12 @@ class LabPi(db.Model):
     firmware_version = db.Column(db.String(20), default='1.0')
     hardware_version = db.Column(db.String(20))
     location = db.Column(db.String(100))
+    
+    # Board type assigned to this Lab Pi (auto-synced from experiment)
+    board_type = db.Column(db.String(50), default='arduino')  # arduino, attiny, stm32, etc.
+    
+    # Custom SOP for this Lab Pi (optional, overrides experiment SOP)
+    sop_file = db.Column(db.String(255))
     
     # Department association
     department_id = db.Column(db.Integer, db.ForeignKey('department.id'))
