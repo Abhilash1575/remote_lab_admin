@@ -2449,6 +2449,7 @@ def experiment():
     if not session:
         # Check if booking is already completed - prevent re-entering completed session
         if booking.status == 'COMPLETED':
+            print(f"[Session] Booking already completed, blocking access: {session_key}")
             return render_template('expired_session.html', message="This session has already been completed.")
         
         # Calculate session duration from booking
@@ -2474,7 +2475,13 @@ def experiment():
     else:
         # Session exists - check if already completed
         if session.status == 'COMPLETED':
+            print(f"[Session] Session already COMPLETED in DB, blocking access: {session_key}, status={session.status}")
             return render_template('expired_session.html', message="This session has already been completed.")
+        elif session.status == 'EXPIRED':
+            print(f"[Session] Session EXPIRED, blocking access: {session_key}")
+            return render_template('expired_session.html', message="This session has expired.")
+        else:
+            print(f"[Session] Rejoining existing session: {session_key}, status={session.status}")
     
     # Find Lab Pi for this experiment
     lab_pi = LabPi.query.filter_by(

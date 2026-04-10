@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Virtual Oscilloscope (CRO) - Embedded Virtual Lab</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+html, body { height: 100%; margin: 0; font-family: 'Inter', sans-serif; background: #0a0a12; color: #e0e0e0; overflow: hidden; }
+#CRO_CONTAINER { display: flex; flex-direction: column; height: 100vh; background: #0a0a12; }
+.control-panel { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 16px; background: #14141f; border-bottom: 1px solid #2a2a3a; }
+.control-group { display: flex; gap: 8px; align-items: center; }
+.control-group label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+.osc-button { padding: 6px 12px; border-radius: 4px; border: 1px solid #333; cursor: pointer; background: #1e1e2e; color: #00f0ff; font-size: 12px; font-weight: 600; transition: all 0.15s; }
+.osc-button:hover { background: #2a2a3e; border-color: #00f0ff; }
+.osc-button.active { background: #00f0ff; color: #041726; }
+.osc-select { padding: 6px 10px; border-radius: 4px; border: 1px solid #333; background: #1e1e2e; color: #e0e0e0; font-size: 12px; min-width: 90px; }
+.osc-input { padding: 6px 8px; border-radius: 4px; border: 1px solid #333; background: #1e1e2e; color: #e0e0e0; font-size: 12px; width: 60px; text-align: center; }
+.channel-toggle { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 4px; border: 1px solid #333; cursor: pointer; }
+.channel-toggle.on { border-color: #00f0ff; background: rgba(0,240,255,0.1); }
+.channel-toggle.on .channel-dot { background: #00f0ff; box-shadow: 0 0 8px #00f0ff; }
+.channel-dot { width: 10px; height: 10px; border-radius: 50%; background: #333; }
+.trigger-indicator { width: 8px; height: 8px; border-radius: 50%; background: #00ff7f; }
+.trigger-indicator.waiting { background: #ffaa00; animation: pulse 0.5s infinite; }
+.trigger-indicator.triggered { background: #00ff7f; box-shadow: 0 0 10px #00ff7f; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.chart-area { flex: 1; position: relative; min-height: 0; }
+.chart-canvas { width: 100%; height: 100%; }
+.grid-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; opacity: 0.3; }
+.scale-display { position: absolute; top: 10px; right: 10px; font-family: 'Roboto Mono', monospace; font-size: 11px; color: #666; background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 4px; }
+.scale-display div { margin: 2px 0; }
+.status-bar { display: flex; gap: 16px; padding: 8px 16px; background: #14141f; border-top: 1px solid #2a2a3a; font-size: 11px; color: #666; }
+.status-bar .stat { display: flex; align-items: center; gap: 6px; }
+.status-bar .stat-value { color: #00f0ff; font-family: 'Roboto Mono', monospace; }
+</style>
+</head>
+<body>
+<div id="CRO_CONTAINER">
+  <div class="control-panel">
+    <div class="control-group">
+      <label>Time/Div</label>
+      <select id="timeDiv" class="osc-select">
+        <option value="10">10 ms</option>
+        <option value="20">20 ms</option>
+        <option value="50">50 ms</option>
+        <option value="100" selected>100 ms</option>
+        <option value="200">200 ms</option>
+        <option value="500">500 ms</option>
+        <option value="1000">1 s</option>
+        <option value="2000">2 s</option>
+        <option value="5000">5 s</option>
+        <option value="10000">10 s</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Volts/Div (Ch1)</label>
+      <select id="voltsDiv1" class="osc-select">
+        <option value="0.1">100 mV</option>
+        <option value="0.2">200 mV</option>
+        <option value="0.5">500 mV</option>
+        <option value="1" selected>1 V</option>
+        <option value="2">2 V</option>
+        <option value="5">5 V</option>
+        <option value="10">10 V</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Volts/Div (Ch2)</label>
+      <select id="voltsDiv2" class="osc-select">
+        <option value="0.1">100 mV</option>
+        <option value="0.2">200 mV</option>
+        <option value="0.5">500 mV</option>
+        <option value="1" selected>1 V</option>
+        <option value="2">2 V</option>
+        <option value="5">5 V</option>
+        <option value="10">10 V</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Trigger</label>
+      <select id="triggerMode" class="osc-select">
+        <option value="none">Off</option>
+        <option value="rising" selected>Rising</option>
+        <option value="falling">Falling</option>
+      </select>
+      <input type="number" id="triggerLevel" class="osc-input" value="0" step="0.1" placeholder="Level">
+    </div>
+    <div class="control-group">
+      <div class="channel-toggle on" id="ch1Toggle">
+        <div class="channel-dot"></div>
+        <span style="font-size:12px;color:#00f0ff">CH1</span>
+      </div>
+      <div class="channel-toggle" id="ch2Toggle">
+        <div class="channel-dot"></div>
+        <span style="font-size:12px;color:#00ff7f">CH2</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <button id="runStopBtn" class="osc-button active">RUN</button>
+      <button id="singleBtn" class="osc-button">SINGLE</button>
+      <button id="clearBtn" class="osc-button">CLEAR</button>
+    </div>
+    <div class="control-group">
+      <div class="trigger-indicator" id="triggerLed"></div>
+      <span style="font-size:11px;color:#888">TRIG</span>
+    </div>
+    <div class="control-group">
+      <button id="exportCsvBtn" class="osc-button">Export CSV</button>
+      <button id="pauseBtn" class="osc-button">Pause</button>
+      <button id="backBtn" class="osc-button">Back</button>
+    </div>
+  </div>
+  
+  <div class="chart-area">
+    <canvas id="mainChart" class="chart-canvas"></canvas>
+  </div>
+  
+  <div class="scale-display">
+    <div id="scaleTimeDiv">Time: 100ms/div</div>
+    <div id="scaleVolts1">CH1: 1V/div</div>
+    <div id="scaleVolts2">CH2: 1V/div</div>
+    <div id="dataRate">Rate: 0/s</div>
+  </div>
+  
+  <div class="status-bar">
+    <div class="stat">Samples: <span class="stat-value" id="sampleCount">0</span></div>
+    <div class="stat">Buffer: <span class="stat-value" id="bufferSize">0</span></div>
+    <div class="stat">Min: <span class="stat-value" id="ch1Min">-</span></div>
+    <div class="stat">Max: <span class="stat-value" id="ch1Max">-</span></div>
+    <div class="stat">Freq: <span class="stat-value" id="frequency">-</span></div>
+  </div>
+</div>
+
+<script>
+const socket = io.connect(window.location.origin, { transports: ['websocket', 'polling'] });
+
+const chartCtx = document.getElementById('mainChart').getContext('2d');
+const DATA_BUFFER_SIZE = 2000;
+const dataBuffer = [];
+let isRunning = true;
+let sampleCount = 0;
+let ch1Enabled = true;
+let ch2Enabled = false;
+let lastTriggerTime = 0;
+let triggerArmed = true;
+let isSingleMode = false;
+let ch1Min = null, ch1Max = null;
+let lastDataTime = Date.now();
+let dataRateCounter = 0;
+let dataRateDisplay = 0;
+
+const TIME_DIV = parseInt(document.getElementById('timeDiv').value);
+const VOLTS_DIV_1 = parseFloat(document.getElementById('voltsDiv1').value);
+const VOLTS_DIV_2 = parseFloat(document.getElementById('voltsDiv2').value);
+
+const chart = new Chart(chartCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: 'CH1', data: [], borderColor: '#00f0ff', borderWidth: 1.5, pointRadius: 0, fill: false, yAxisID: 'y', tension: 0, spanGaps: true, showLine: true },
+      { label: 'CH2', data: [], borderColor: '#00ff7f', borderWidth: 1.5, pointRadius: 0, fill: false, yAxisID: 'y1', hidden: true, tension: 0, spanGaps: true, showLine: true }
+    ]
+  },
+  options: {
+    animation: false,
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'none', intersect: false },
+    layout: { padding: { left: 60, right: 20, top: 20, bottom: 40 } },
+    scales: {
+      x: {
+        type: 'linear',
+        display: true,
+        grid: { color: '#1a1a2a', lineWidth: 1 },
+        title: { display: true, text: 'Time (ms)', color: '#666', font: { size: 11 } },
+        ticks: { color: '#555', font: { size: 10 } },
+        min: 0,
+        max: 1000
+      },
+      y: {
+        display: true,
+        position: 'left',
+        grid: { color: '#1a1a2a', lineWidth: 1 },
+        title: { display: true, text: 'Voltage (V)', color: '#00f0ff', font: { size: 11 } },
+        ticks: { color: '#555', font: { size: 10 } },
+        suggestedMin: -5,
+        suggestedMax: 5
+      },
+      y1: {
+        display: false,
+        position: 'right',
+        grid: { drawOnChartArea: false },
+        title: { display: true, text: 'CH2 (V)', color: '#00ff7f', font: { size: 11 } },
+        suggestedMin: -5,
+        suggestedMax: 5
+      }
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: { enabled: false }
+    }
+  }
+});
+
+function getTimeWindow() {
+  return parseInt(document.getElementById('timeDiv').value) * 10;
+}
+
+function getVoltsDiv1() {
+  return parseFloat(document.getElementById('voltsDiv1').value);
+}
+
+function getVoltsDiv2() {
+  return parseFloat(document.getElementById('voltsDiv2').value);
+}
+
+function getTriggerLevel() {
+  return parseFloat(document.getElementById('triggerLevel').value) || 0;
+}
+
+function getTriggerMode() {
+  return document.getElementById('triggerMode').value;
+}
+
+function updateScales() {
+  const timeWindow = getTimeWindow();
+  chart.options.scales.x.min = -timeWindow;
+  chart.options.scales.x.max = 0;
+  chart.options.scales.x.title.text = `Time (${timeWindow}ms window)`;
+  
+  const v1 = getVoltsDiv1();
+  const halfHeight = v1 * 5;
+  chart.options.scales.y.min = -halfHeight;
+  chart.options.scales.y.max = halfHeight;
+  
+  const v2 = getVoltsDiv2();
+  const halfHeight2 = v2 * 5;
+  chart.options.scales.y1.min = -halfHeight2;
+  chart.options.scales.y1.max = halfHeight2;
+  
+  document.getElementById('scaleTimeDiv').textContent = `Time: ${document.getElementById('timeDiv').value}ms/div`;
+  document.getElementById('scaleVolts1').textContent = `CH1: ${v1}V/div`;
+  document.getElementById('scaleVolts2').textContent = `CH2: ${v2}V/div`;
+  
+  chart.update('none');
+}
+
+document.getElementById('timeDiv').addEventListener('change', updateScales);
+document.getElementById('voltsDiv1').addEventListener('change', updateScales);
+document.getElementById('voltsDiv2').addEventListener('change', updateScales);
+
+document.getElementById('ch1Toggle').addEventListener('click', () => {
+  ch1Enabled = !ch1Enabled;
+  const el = document.getElementById('ch1Toggle');
+  el.classList.toggle('on', ch1Enabled);
+  chart.data.datasets[0].hidden = !ch1Enabled;
+  chart.options.scales.y.display = ch1Enabled;
+  chart.update('none');
+});
+
+document.getElementById('ch2Toggle').addEventListener('click', () => {
+  ch2Enabled = !ch2Enabled;
+  const el = document.getElementById('ch2Toggle');
+  el.classList.toggle('on', ch2Enabled);
+  chart.data.datasets[1].hidden = !ch2Enabled;
+  chart.options.scales.y1.display = ch2Enabled;
+  chart.update('none');
+});
+
+document.getElementById('runStopBtn').addEventListener('click', () => {
+  isRunning = !isRunning;
+  const btn = document.getElementById('runStopBtn');
+  btn.textContent = isRunning ? 'RUN' : 'STOP';
+  btn.classList.toggle('active', isRunning);
+});
+
+document.getElementById('singleBtn').addEventListener('click', () => {
+  isSingleMode = true;
+  isRunning = true;
+  triggerArmed = true;
+  dataBuffer.length = 0;
+  chart.data.labels.length = 0;
+  chart.data.datasets[0].data.length = 0;
+  chart.data.datasets[1].data.length = 0;
+  updateScales();
+  document.getElementById('runStopBtn').textContent = 'STOP';
+  document.getElementById('runStopBtn').classList.remove('active');
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  dataBuffer.length = 0;
+  chart.data.labels.length = 0;
+  chart.data.datasets[0].data.length = 0;
+  chart.data.datasets[1].data.length = 0;
+  ch1Min = null;
+  ch1Max = null;
+  triggerArmed = true;
+  chart.update('none');
+  updateStats();
+});
+
+document.getElementById('pauseBtn').addEventListener('click', () => {
+  isRunning = !isRunning;
+  document.getElementById('pauseBtn').textContent = isRunning ? 'Pause' : 'Resume';
+});
+
+document.getElementById('exportCsvBtn').addEventListener('click', () => {
+  if (dataBuffer.length === 0) {
+    alert('No data to export');
+    return;
+  }
+  const header = 'Timestamp,CH1,CH2\n';
+  const rows = dataBuffer.map(p => `${p.timestamp},${p.ch1 !== null ? p.ch1 : ''},${p.ch2 !== null ? p.ch2 : ''}`).join('\n');
+  const csv = header + rows;
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `oscilloscope_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('backBtn').addEventListener('click', () => {
+  window.location.href = '/';
+});
+
+function checkTrigger(value, timestamp) {
+  const mode = getTriggerMode();
+  if (mode === 'none') return true;
+  
+  const level = getTriggerLevel();
+  const lastValue = dataBuffer.length > 0 ? dataBuffer[dataBuffer.length - 1].ch1 : null;
+  
+  if (lastValue === null) return false;
+  
+  const triggered = (mode === 'rising' && lastValue < level && value >= level) ||
+                  (mode === 'falling' && lastValue > level && value <= level);
+  
+  if (triggered) {
+    lastTriggerTime = timestamp;
+    triggerArmed = false;
+    document.getElementById('triggerLed').classList.add('triggered');
+    document.getElementById('triggerLed').classList.remove('waiting');
+    return true;
+  }
+  return false;
+}
+
+function chartLoop() {
+  const now = Date.now();
+  dataRateCounter++;
+  
+  if (now - lastDataTime >= 1000) {
+    dataRateDisplay = dataRateCounter;
+    dataRateCounter = 0;
+    lastDataTime = now;
+    document.getElementById('dataRate').textContent = `Rate: ${dataRateDisplay}/s`;
+  }
+  
+  if (!isRunning && !isSingleMode) {
+    requestAnimationFrame(chartLoop);
+    return;
+  }
+  
+  const timeWindow = getTimeWindow();
+  const currentTime = now;
+  
+  while (dataBuffer.length > 0 && (currentTime - dataBuffer[0].timestamp > timeWindow)) {
+    dataBuffer.shift();
+  }
+  
+  chart.data.labels.length = 0;
+  const ch1Data = chart.data.datasets[0].data;
+  const ch2Data = chart.data.datasets[1].data;
+  ch1Data.length = 0;
+  ch2Data.length = 0;
+  
+  for (let i = 0; i < dataBuffer.length; i++) {
+    const point = dataBuffer[i];
+    const x = -(currentTime - point.timestamp);
+    ch1Data.push({ x, y: point.ch1 });
+    if (point.ch2 !== null && !chart.data.datasets[1].hidden) {
+      ch2Data.push({ x, y: point.ch2 });
+    }
+  }
+  ch1Data.sort((a, b) => a.x - b.x);
+  ch2Data.sort((a, b) => a.x - b.x);
+    
+    if (ch1Enabled && point.ch1 !== null) {
+      if (ch1Min === null || point.ch1 < ch1Min) ch1Min = point.ch1;
+      if (ch1Max === null || point.ch1 > ch1Max) ch1Max = point.ch1;
+    }
+  }
+  
+  if (isSingleMode && !triggerArmed && ch1Data.length > 0) {
+    const triggerOffset = currentTime - lastTriggerTime;
+    if (triggerOffset > timeWindow) {
+      isRunning = false;
+      document.getElementById('runStopBtn').textContent = 'SINGLE';
+      document.getElementById('runStopBtn').classList.add('active');
+    }
+  }
+  
+  chart.update('none');
+  updateStats();
+  requestAnimationFrame(chartLoop);
+}
+
+function updateStats() {
+  document.getElementById('sampleCount').textContent = sampleCount;
+  document.getElementById('bufferSize').textContent = dataBuffer.length;
+  document.getElementById('ch1Min').textContent = ch1Min !== null ? ch1Min.toFixed(2) : '-';
+  document.getElementById('ch1Max').textContent = ch1Max !== null ? ch1Max.toFixed(2) : '-';
+  
+  if (dataBuffer.length >= 4) {
+    const t0 = dataBuffer[0].timestamp;
+    const tn = dataBuffer[dataBuffer.length - 1].timestamp;
+    const timeSpan = tn - t0;
+    if (timeSpan > 0) {
+      let zeroCrossings = 0;
+      const avg = (ch1Min + ch1Max) / 2;
+      for (let i = 1; i < dataBuffer.length; i++) {
+        const prev = dataBuffer[i - 1].ch1;
+        const curr = dataBuffer[i].ch1;
+        if ((prev < avg && curr >= avg) || (prev > avg && curr <= avg)) {
+          zeroCrossings++;
+        }
+      }
+      if (zeroCrossings > 0) {
+        const freq = (zeroCrossings / 2) / (timeSpan / 1000);
+        document.getElementById('frequency').textContent = freq.toFixed(1) + ' Hz';
+      }
+    }
+  }
+}
+
+socket.on('sensor_data', (payload) => {
+  if (!payload) return;
+  sampleCount++;
+  
+  const numericKeys = Object.keys(payload).filter(k =>
+    payload[k] !== null && payload[k] !== undefined &&
+    !isNaN(Number(payload[k]))
+  );
+  
+  if (chart.data.datasets[0].label === 'CH1' && numericKeys.length > 0) {
+    chart.data.datasets[0].label = numericKeys[0];
+  }
+  if (chart.data.datasets[1].label === 'CH2' && numericKeys.length > 1) {
+    chart.data.datasets[1].hidden = false;
+    chart.options.scales.y1.display = true;
+    document.getElementById('ch2Toggle').classList.add('on');
+    ch2Enabled = true;
+  }
+  
+  const key1 = numericKeys[0];
+  const key2 = numericKeys[1];
+  const val1 = key1 ? Number(payload[key1]) : null;
+  const val2 = key2 ? Number(payload[key2]) : null;
+  
+  const now = payload._ts || Date.now();
+  
+  if (val1 !== null || val2 !== null) {
+    if (triggerArmed && checkTrigger(val1, now)) {
+      document.getElementById('triggerLed').classList.remove('waiting');
+    } else if (triggerArmed) {
+      document.getElementById('triggerLed').classList.add('waiting');
+    }
+    
+    dataBuffer.push({
+      timestamp: now,
+      ch1: val1,
+      ch2: val2
+    });
+    
+    if (dataBuffer.length > DATA_BUFFER_SIZE) {
+      dataBuffer.shift();
+    }
+  }
+});
+
+updateScales();
+chartLoop();
+
+document.getElementById('triggerLed').classList.add('waiting');
+</script>
+</body>
+</html>

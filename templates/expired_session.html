@@ -61,7 +61,11 @@
     <div class="expired-container">
         <h1>Session Expired</h1>
         <p>This session link has expired or is invalid. Session links are only valid during active booking periods.</p>
+        {% if message %}
+        <p class="warning">{{ message }}</p>
+        {% else %}
         <p class="warning">Redirecting to homepage...</p>
+        {% endif %}
         <a href="/" class="home-btn" id="homeBtn">Go to Homepage</a>
     </div>
     <script>
