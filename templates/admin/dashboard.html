@@ -358,7 +358,7 @@
             <ul>
                 <li><a href="{{ url_for('admin_dashboard') }}" class="active"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
                 <li><a href="{{ url_for('manage_users') }}"><i class="fas fa-users"></i> Users</a></li>
-                <li><a href="{{ url_for('manage_experiments') }}"><i class="fas fa-flask"></i> Experiments</a></li>
+                <li><a href="{{ url_for('manage_devices') }}"><i class="fas fa-hdd"></i> Lab Pis</a></li>
                 <li><a href="{{ url_for('manage_devices') }}"><i class="fas fa-hdd"></i> Devices</a></li>
                 <li><a href="{{ url_for('manage_bookings') }}"><i class="fas fa-calendar"></i> Bookings</a></li>
                 <li><a href="{{ url_for('manage_sessions') }}"><i class="fas fa-clock"></i> Sessions</a></li>
@@ -395,11 +395,11 @@
             </div>
             <div class="stat-card">
                 <div class="icon green">
-                    <i class="fas fa-flask"></i>
+                    <i class="fas fa-hdd"></i>
                 </div>
                 <div class="stat-info">
-                    <h3>{{ experiments|length }}</h3>
-                    <p>Experiments</p>
+                    <h3>{{ lab_pis|length }}</h3>
+                    <p>Lab Pis</p>
                 </div>
             </div>
             <div class="stat-card">
@@ -444,10 +444,10 @@
                             {% if session.status == 'ACTIVE' %}
                             <tr>
                                 <td>{{ session.session_key }}</td>
-                                <td>{{ session.user.full_name }}</td>
-                                <td>{{ session.booking.experiment.name }}</td>
-                                <td>{{ session.start_time.strftime('%Y-%m-%d %H:%M') }}</td>
-                                <td>{{ session.end_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ session.user.full_name if session.user else 'N/A' }}</td>
+                                <td>{{ session.booking.experiment.name if (session.booking and session.booking.experiment) else 'N/A' }}</td>
+                                <td>{{ session.start_time.strftime('%Y-%m-%d %H:%M') if session.start_time else 'N/A' }}</td>
+                                <td>{{ session.end_time.strftime('%Y-%m-%d %H:%M') if session.end_time else 'N/A' }}</td>
                                 <td>
                                     <span class="status-badge active">
                                         {{ session.status }}
@@ -490,10 +490,10 @@
                         {% for booking in bookings[:10] %}
                         <tr>
                             <td>{{ booking.session_key }}</td>
-                            <td>{{ booking.user.full_name }}</td>
-                            <td>{{ booking.experiment.name }}</td>
-                            <td>{{ booking.start_time.strftime('%Y-%m-%d') }}</td>
-                            <td>{{ booking.start_time.strftime('%H:%M') }}</td>
+                            <td>{{ booking.user.full_name if booking.user else 'N/A' }}</td>
+                            <td>{{ booking.experiment.name if booking.experiment else 'N/A' }}</td>
+                            <td>{{ booking.start_time.strftime('%Y-%m-%d') if booking.start_time else 'N/A' }}</td>
+                            <td>{{ booking.start_time.strftime('%H:%M') if booking.start_time else 'N/A' }}</td>
                             <td>
                                 <span class="status-badge {{ 'upcoming' if booking.status == 'UPCOMING' else 'completed' if booking.status == 'COMPLETED' else 'active' }}">
                                     {{ booking.status }}

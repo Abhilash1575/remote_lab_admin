@@ -80,6 +80,7 @@ import psutil
 
 # ---------- CONFIG ----------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
 UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads')
 DEFAULT_FW_DIR = os.path.join(BASE_DIR, 'default_fw')
 SOP_DIR = os.path.join(BASE_DIR, 'static')
@@ -1070,38 +1071,53 @@ def reset_password(token):
 def admin_dashboard():
     if not current_user.is_admin:
         abort(403)
-    
-    # Update session statuses
-    now = datetime.now()
-    active_sessions_db = Session.query.filter_by(status='ACTIVE').all()
-    for session in active_sessions_db:
-        if now > session.end_time:
-            session.status = 'EXPIRED'
-    
-    db.session.commit()
-    
-    users = User.query.all()
-    experiments = Experiment.query.all()
-    bookings = Booking.query.all()
-    devices = Device.query.all()
-    lab_pis = LabPi.query.all()
-    sessions = Session.query.all()
-    
-    # Calculate online/offline/maintenance device counts from LabPi table
-    online_devices = sum(1 for d in lab_pis if d.status == 'ONLINE')
-    offline_devices = sum(1 for d in lab_pis if d.status == 'OFFLINE')
-    maintenance_devices = sum(1 for d in lab_pis if d.status == 'MAINTENANCE')
-    
-    return render_template('admin/dashboard.html', 
-                         users=users, 
-                         experiments=experiments, 
-                         bookings=bookings, 
-                         devices=devices,
-                         lab_pis=lab_pis,
-                         sessions=sessions,
-                         online_devices=online_devices,
-                         offline_devices=offline_devices,
-                         maintenance_devices=maintenance_devices)
+
+    try:
+        # Update session statuses
+        now = datetime.now()
+        active_sessions_db = Session.query.filter_by(status='ACTIVE').all()
+        for session in active_sessions_db:
+            if now > session.end_time:
+                session.status = 'EXPIRED'
+
+        db.session.commit()
+
+        users = User.query.all()
+        experiments = Experiment.query.all()
+        bookings = Booking.query.all()
+        devices = Device.query.all()
+        lab_pis = LabPi.query.all()
+        sessions = Session.query.all()
+
+        # Calculate online/offline/maintenance device counts from LabPi table
+        online_devices = sum(1 for d in lab_pis if d.status == 'ONLINE')
+        offline_devices = sum(1 for d in lab_pis if d.status == 'OFFLINE')
+        maintenance_devices = sum(1 for d in lab_pis if d.status == 'MAINTENANCE')
+
+        return render_template('admin/dashboard.html',
+                             users=users,
+                             experiments=experiments,
+                             bookings=bookings,
+                             devices=devices,
+                             lab_pis=lab_pis,
+                             sessions=sessions,
+                             online_devices=online_devices,
+                             offline_devices=offline_devices,
+                             maintenance_devices=maintenance_devices)
+    except Exception as e:
+        print(f"Error in admin dashboard: {str(e)}")
+        db.session.rollback()
+        # Provide fallback data to prevent template errors
+        return render_template('admin/dashboard.html',
+                             users=[],
+                             experiments=[],
+                             bookings=[],
+                             devices=[],
+                             lab_pis=[],
+                             sessions=[],
+                             online_devices=0,
+                             offline_devices=0,
+                             maintenance_devices=0)
 
 @app.route('/admin/devices', methods=['GET', 'POST'])
 @login_required
@@ -2577,7 +2593,8 @@ def experiment():
         session_duration=duration, 
         session_end_time=session_end_time,
         lab_pi_url=lab_pi_url,
-        lab_pi_id=lab_pi.lab_pi_id if lab_pi else None
+        lab_pi_id=lab_pi.lab_pi_id if lab_pi else None,
+        board_type=board_type if 'board_type' in locals() else 'arduino'
     )
 
 @app.route('/add_session', methods=['POST'])
@@ -3557,8 +3574,13 @@ def lab_pi_heartbeat():
                 'booking_id': active_booking.id,
                 'start_time': active_booking.start_time.isoformat() if active_booking.start_time else None,
                 'end_time': active_booking.end_time.isoformat() if active_booking.end_time else None,
-                'user_email': active_booking.user.email if active_booking.user else None
+                'user_email': active_booking.user.email if active_booking.user else None,
+                'board_type': lab_pi.board_type
             }
+    
+    # Always include current board_type in response for real-time sync
+    response_data['board_type'] = lab_pi.board_type
+    response_data['sop_file'] = lab_pi.sop_file
     
     return jsonify(response_data)
 
@@ -3842,6 +3864,23 @@ def admin_lab_pi_edit(lab_pi_id):
             # Auto-sync from experiment (but experiments no longer have board_type)
             experiment = Experiment.query.get(int(experiment_id))
         
+        db.session.commit()
+
+        # Real-time synchronization: Push update to Lab Pi immediately if online
+        if lab_pi.status == 'ONLINE' and lab_pi.ip_address:
+            try:
+                requests.post(
+                    f"http://{lab_pi.ip_address}:10000/api/lab-pi/update-config",
+                    json={
+                        'board_type': lab_pi.board_type,
+                        'sop_file': lab_pi.sop_file,
+                        'experiment_id': lab_pi.experiment_id
+                    },
+                    timeout=2
+                )
+            except Exception as e:
+                print(f"[SYNC] Failed to push real-time update to Lab Pi {lab_pi.lab_pi_id}: {e}")
+
         # Update custom SOP file - handle file upload
         sop_file_upload = request.files.get('sop_file_upload')
         if sop_file_upload and sop_file_upload.filename:
@@ -3861,7 +3900,6 @@ def admin_lab_pi_edit(lab_pi_id):
             # Check hidden input for existing filename
             lab_pi.sop_file = request.form.get('sop_file') or None
         
-        db.session.commit()
         flash(f'Lab Pi "{lab_pi.name}" updated successfully!', 'success')
         return redirect(url_for('manage_devices'))
     
@@ -4137,7 +4175,7 @@ def receive_audio_stream():
             'audio': audio_b64,
             'sample_rate': sample_rate,
             'channels': channels
-        })
+        }, namespace='/audio')
         
         return jsonify({'success': True})
         

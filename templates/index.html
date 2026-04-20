@@ -122,10 +122,9 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
         <select id="serialPort" class="small-input" style="width:140px"></select>
         <button id="refreshPorts" style="background:#333;color:#fff;border-radius:6px;padding:6px 8px">Refresh</button>
       </div>
-      <div style="display:flex;gap:8px;margin-bottom:8px">
-        <button class="primary" id="connectBtn">Connect</button>
-        <button class="danger" id="disconnectBtn" disabled>Disconnect</button>
-        <button id="clearLog" style="background:#333;color:#fff;border-radius:6px">Clear</button>
+      <div style=\"display:flex;gap:8px;margin-bottom:8px\">
+        <button id=\"connectBtn\" style=\"background:#2ecc71;color:#1c1c2b\">Connect</button>
+        <button id=\"clearLog\" style=\"background:#333;color:#fff;border-radius:6px\">Clear</button>
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:8px">
@@ -256,7 +255,6 @@ const cancelFlash = document.getElementById('cancelFlash');
 const baudSelect = document.getElementById('baudSelect');
 const customBaud = document.getElementById('customBaud');
 const connectBtn = document.getElementById('connectBtn');
-const disconnectBtn = document.getElementById('disconnectBtn');
 const serialPortSelect = document.getElementById('serialPort');
 const refreshPorts = document.getElementById('refreshPorts');
 const feedbackList = document.getElementById('feedbackList');
@@ -270,6 +268,12 @@ const addButtonBtn = document.getElementById('addButton');
 const saveLayoutBtn = document.getElementById('saveLayout');
 const loadLayoutBtn = document.getElementById('loadLayout');
 const boardType = document.getElementById('boardType');
+
+// Set board type from server-rendered value
+const serverBoardType = '{{ board_type|default('arduino') }}';
+if (serverBoardType) {
+  boardType.value = serverBoardType;
+}
 
 const factoryResetBtn = document.getElementById('factoryResetBtn');
 const viewSopBtn = document.getElementById('viewSopBtn');
@@ -437,21 +441,27 @@ baudSelect.addEventListener('change', () => {
   else customBaud.style.display = 'none';
 });
 
+let serialConnected = false;
+
 connectBtn.addEventListener('click', () => {
+  if (serialConnected) {
+    socket.emit('disconnect_serial');
+    feedbackAdd('Requested disconnect.');
+    return;
+  }
+  
   const port = serialPortSelect.value || '/dev/ttyUSB0';
   const baud = (baudSelect.value==='custom') ? parseInt(customBaud.value||'115200') : parseInt(baudSelect.value);
-  connectBtn.disabled = true; disconnectBtn.disabled = true;
+  connectBtn.disabled = true;
+  connectBtn.textContent = 'Connecting...';
   feedbackAdd(`Connecting to ${port}@${baud} ...`);
   socket.emit('connect_serial', { port, baud });
   if(connectTimeoutHandle) clearTimeout(connectTimeoutHandle);
   connectTimeoutHandle = setTimeout(() => {
     feedbackAdd('⚠️ Serial connect timed out (no response).');
-    connectBtn.disabled = false; disconnectBtn.disabled = true;
+    connectBtn.disabled = false;
+    connectBtn.textContent = 'Connect';
   }, 6000);
-});
-
-disconnectBtn.addEventListener('click', () => {
-  socket.emit('disconnect_serial'); feedbackAdd('Requested disconnect.');
 });
 
 sendBtn.addEventListener('click', () => {
@@ -471,17 +481,29 @@ clearLog.addEventListener('click', () => { feedbackList.innerText=''; });
 socket.on('serial_status', (info) => {
   if(connectTimeoutHandle){ clearTimeout(connectTimeoutHandle); connectTimeoutHandle = null; }
   if(info && info.status === 'connected'){
-    connectBtn.disabled = true; disconnectBtn.disabled = false;
+    serialConnected = true;
+    connectBtn.disabled = false;
+    connectBtn.textContent = 'Disconnect';
+    connectBtn.style.background = '#ff6b6b';
+    connectBtn.style.color = '#101018';
     feedbackAdd(`✅ Connected: ${info.port}@${info.baud}`);
     requestPorts(); // refresh port list again
     socket.emit('list_ports'); // optional redundant safety
     updateYAxisFilterOptions([]); // prepare Y-axis dropdowns for dynamic data
 
   } else if(info && info.status === 'error'){
-    connectBtn.disabled = false; disconnectBtn.disabled = true;
+    serialConnected = false;
+    connectBtn.disabled = false;
+    connectBtn.textContent = 'Connect';
+    connectBtn.style.background = '#2ecc71';
+    connectBtn.style.color = '#1c1c2b';
     feedbackAdd(`🔴 Serial error: ${info.message || ''}`);
   } else {
-    connectBtn.disabled = false; disconnectBtn.disabled = true;
+    serialConnected = false;
+    connectBtn.disabled = false;
+    connectBtn.textContent = 'Connect';
+    connectBtn.style.background = '#2ecc71';
+    connectBtn.style.color = '#1c1c2b';
     feedbackAdd(`🔴 Disconnected`);
   }
 });
