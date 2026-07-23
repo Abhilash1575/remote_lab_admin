@@ -95,9 +95,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'patilkumarabhi@gmail.com'
-app.config['MAIL_PASSWORD'] = 'soqj jdif cwsc eyxf'
-app.config['MAIL_DEFAULT_SENDER'] = 'patilkumarabhi@gmail.com'
+app.config['MAIL_USERNAME'] = 'noreplyremotelab@gmail.com'
+app.config['MAIL_PASSWORD'] = 'eybo xxde akbe akui'
+app.config['MAIL_DEFAULT_SENDER'] = 'noreplyremotelab@gmail.com'
 
 # Google OAuth configuration
 app.config['GOOGLE_CLIENT_ID'] = '648412093748-dq86s6ti7sn1n2651mmbvkerkjtd9hgk.apps.googleusercontent.com'
@@ -2785,15 +2785,19 @@ def get_available_slots(exp_id):
         Booking.start_time < end_of_day
     ).all()
     
-    # Extract booked hours (slots are hourly)
-    booked_slots = set()
+    # Return actual booked time ranges so the frontend can check overlap
+    # against slots of any duration, not just whole hours
+    booked_intervals = []
     for booking in bookings:
-        hour = booking.start_time.hour
-        booked_slots.add(f"{hour:02d}:00")
-    
+        end_str = booking.end_time.strftime('%H:%M') if booking.end_time.date() == selected_date else '24:00'
+        booked_intervals.append({
+            'start': booking.start_time.strftime('%H:%M'),
+            'end': end_str
+        })
+
     return jsonify({
         'date': date_str,
-        'booked_slots': list(booked_slots),
+        'booked_intervals': booked_intervals,
         'experiment_id': exp_id
     })
 
@@ -2957,13 +2961,48 @@ def book_experiment(exp_id):
             
             # Send email with ICS attachment
             send_email(
-                current_user.email, 
-                subject, 
+                current_user.email,
+                subject,
                 template,
                 attachment=ics_content,
                 attachment_filename=f'booking_{booking.id}.ics'
             )
-            
+
+            # Notify admin of the new booking
+            admin_subject = f'New Booking - {experiment.name}'
+            admin_template = f'''
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #2c3e50;">New Virtual Lab Booking</h2>
+                <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>User</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{current_user.full_name or current_user.email} ({current_user.email})</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Experiment</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{experiment.name}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Date</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{slot_date}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Time</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{selected_slot}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Duration</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{duration} minutes</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Booking ID</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{booking.id}</td>
+                    </tr>
+                </table>
+            </div>
+            '''
+            send_email(app.config['MAIL_USERNAME'], admin_subject, admin_template)
+
             flash('Booking confirmed! Check your email for details.', 'success')
         except Exception as e:
             print(f"[EMAIL ERROR] Booking confirmation email failed: {e}")

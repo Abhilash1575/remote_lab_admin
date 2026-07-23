@@ -226,6 +226,18 @@
             opacity: 0.6;
         }
 
+        .time-slot.warning {
+            background: #fff3cd;
+            border-color: #ffc107;
+            color: #856404;
+        }
+
+        .time-slot.warning:hover {
+            background: #ffe8a1;
+            transform: translateY(-2px);
+            box-shadow: 0 3px 10px rgba(255, 193, 7, 0.3);
+        }
+
         .time-slot.selected {
             background: #00C4FF;
             border-color: #0099CC;
@@ -436,6 +448,9 @@
 
                 <div class="booking-summary" id="bookingSummary" style="display: none;">
                     <h3>Booking Summary</h3>
+                    <div id="lowTimeWarning" style="display: none; background: #fff3cd; border: 1px solid #ffc107; color: #856404; border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; font-size: 14px;">
+                        <i class="fas fa-exclamation-triangle"></i> <span id="lowTimeWarningText"></span>
+                    </div>
                     <div class="summary-item">
                         <span>Experiment</span>
                         <strong>{{ experiment.name }}</strong>
@@ -478,11 +493,22 @@
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('slotDate').setAttribute('min', today);
         
-        // Generate time slots (24 hours: 00:00 - 23:00)
+        function formatMinutes(totalMinutes) {
+            const h = Math.floor(totalMinutes / 60) % 24;
+            const m = totalMinutes % 60;
+            return h.toString().padStart(2, '0') + ':' + m.toString().padStart(2, '0');
+        }
+
+        function toMinutes(hhmm) {
+            const [h, m] = hhmm.split(':').map(Number);
+            return h * 60 + m;
+        }
+
+        // Generate time slots across the day, sized to the experiment's max duration
         const timeSlots = [];
-        for (let hour = 0; hour < 24; hour++) {
-            const timeStr = hour.toString().padStart(2, '0') + ':00';
-            const displayTime = hour.toString().padStart(2, '0') + ':00 - ' + (hour + 1).toString().padStart(2, '0') + ':00';
+        for (let startMinutes = 0; startMinutes + maxDuration <= 24 * 60; startMinutes += maxDuration) {
+            const timeStr = formatMinutes(startMinutes);
+            const displayTime = timeStr + ' - ' + formatMinutes(startMinutes + maxDuration);
             timeSlots.push({ time: timeStr, display: displayTime });
         }
 
@@ -490,23 +516,28 @@
         let selectedDate = null;
         let selectedTimeSlot = null;
         let selectedDuration = null;
-        let bookedSlots = new Set();
+        let bookedIntervals = []; // list of [startMinutes, endMinutes)
 
-        // Generate duration options - fixed 1 hour slot
+        function isSlotBooked(slotStartMinutes) {
+            const slotEndMinutes = slotStartMinutes + maxDuration;
+            return bookedIntervals.some(([s, e]) => slotStartMinutes < e && slotEndMinutes > s);
+        }
+
+        // Generate duration options based on the experiment's max duration
         function generateDurationOptions() {
             const container = document.getElementById('durationOptions');
             container.innerHTML = '';
-            
-            // Fixed 60 minute (1 hour) slot
+
             const div = document.createElement('div');
             div.className = 'duration-option selected';
-            div.dataset.duration = 60;
-            div.textContent = '60 min (1 Hour)';
-            div.onclick = () => selectDuration(60);
+            div.dataset.duration = maxDuration;
+            div.textContent = maxDuration >= 60
+                ? `${maxDuration} min (${maxDuration / 60} Hour${maxDuration === 60 ? '' : 's'})`
+                : `${maxDuration} min`;
+            div.onclick = () => selectDuration(maxDuration);
             container.appendChild(div);
-            
-            // Auto-select 60 min
-            selectDuration(60);
+
+            selectDuration(maxDuration);
         }
 
         // Select duration
@@ -553,39 +584,46 @@
                 const response = await fetch(`/api/available-slots/${expId}?date=${date}`);
                 const data = await response.json();
                 
-                bookedSlots = new Set();
-                if (data.booked_slots) {
-                    data.booked_slots.forEach(slot => bookedSlots.add(slot));
-                }
+                bookedIntervals = (data.booked_intervals || []).map(iv => [toMinutes(iv.start), toMinutes(iv.end)]);
             } catch (error) {
                 console.error('Error fetching booked slots:', error);
-                bookedSlots = new Set();
+                bookedIntervals = [];
             }
         }
+
+        // Warn (but still allow booking) once a slot has this few minutes left
+        const WARNING_THRESHOLD_MINUTES = 15;
 
         // Render time slots
         function renderTimeSlots() {
             const grid = document.getElementById('timeSlotsGrid');
             grid.innerHTML = '';
-            
+
             const now = new Date();
-            const currentHour = now.getHours();
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
             const selectedDateValue = document.getElementById('slotDate').value;
             const today = new Date().toISOString().split('T')[0];
             const isToday = selectedDateValue === today;
-            
+
             timeSlots.forEach(slot => {
                 const div = document.createElement('div');
                 div.className = 'time-slot';
                 div.dataset.time = slot.time;
                 div.textContent = slot.display;
-                
-                const slotHour = parseInt(slot.time.split(':')[0]);
-                
+
+                const slotStartMinutes = toMinutes(slot.time);
+                const slotEndMinutes = slotStartMinutes + maxDuration;
+                const minutesRemaining = slotEndMinutes - currentMinutes;
+
+                // A slot is only truly unbookable once it has fully ended
+                const isExpired = isToday && minutesRemaining <= 0;
+                // Slot is still bookable, but with limited time left in it
+                const isStartingSoon = isToday && !isExpired && minutesRemaining <= WARNING_THRESHOLD_MINUTES;
+
                 // Check if slot is booked
-                if (bookedSlots.has(slot.time)) {
-                    // If booked slot has passed (for today), show GREY
-                    if (isToday && slotHour < currentHour) {
+                if (isSlotBooked(slotStartMinutes)) {
+                    // If booked slot has fully ended (for today), show GREY
+                    if (isExpired) {
                         div.classList.add('expired');
                         div.title = 'This session has ended';
                     } else {
@@ -594,30 +632,35 @@
                         div.title = 'This slot is already booked';
                     }
                 }
-                // Check if slot is expired (past time for today) - only for unbooked slots
-                else if (isToday && slotHour < currentHour) {
+                // Fully expired (past end time) - only for unbooked slots
+                else if (isExpired) {
                     div.classList.add('expired');
                     div.title = 'This slot has already passed';
                 }
                 else {
-                    div.classList.add('available');
-                    div.onclick = () => selectTimeSlot(slot.time, div);
+                    div.classList.add(isStartingSoon ? 'warning' : 'available');
+                    if (isStartingSoon) {
+                        div.title = `Only ${minutesRemaining} minute${minutesRemaining === 1 ? '' : 's'} remaining in this slot`;
+                    }
+                    div.onclick = () => selectTimeSlot(slot.time, div, isStartingSoon ? minutesRemaining : null);
                 }
-                
+
                 grid.appendChild(div);
             });
         }
 
         // Select time slot
-        function selectTimeSlot(time, element) {
+        let selectedSlotMinutesRemaining = null;
+        function selectTimeSlot(time, element, minutesRemaining) {
             selectedTimeSlot = time;
-            
+            selectedSlotMinutesRemaining = minutesRemaining ?? null;
+
             // Update UI
             document.querySelectorAll('.time-slot').forEach(slot => {
                 slot.classList.remove('selected');
             });
             element.classList.add('selected');
-            
+
             document.getElementById('selectedSlot').value = time;
             updateSummary();
         }
@@ -626,27 +669,36 @@
         function updateSummary() {
             const summary = document.getElementById('bookingSummary');
             const submitBtn = document.getElementById('submitBtn');
-            
+            const lowTimeWarning = document.getElementById('lowTimeWarning');
+
             if (selectedDate && selectedTimeSlot && selectedDuration) {
                 summary.style.display = 'block';
                 submitBtn.disabled = false;
-                
+
                 document.getElementById('summaryDate').textContent = selectedDate;
-                
-                const hour = parseInt(selectedTimeSlot.split(':')[0]);
-                const endHour = hour + 1;
-                document.getElementById('summaryTime').textContent = 
-                    `${hour.toString().padStart(2, '0')}:00 - ${endHour.toString().padStart(2, '0')}:00`;
-                
+
+                const startMinutes = toMinutes(selectedTimeSlot);
+                document.getElementById('summaryTime').textContent =
+                    `${selectedTimeSlot} - ${formatMinutes(startMinutes + selectedDuration)}`;
+
                 document.getElementById('summaryDuration').textContent = selectedDuration + ' minutes';
-                
+
                 if (pricePerHour > 0) {
                     const totalPrice = pricePerHour * (selectedDuration / 60);
                     document.getElementById('summaryPrice').textContent = '₹' + totalPrice.toFixed(2);
                 }
+
+                if (selectedSlotMinutesRemaining !== null) {
+                    document.getElementById('lowTimeWarningText').textContent =
+                        `This slot has already started — only ${selectedSlotMinutesRemaining} minute${selectedSlotMinutesRemaining === 1 ? '' : 's'} remaining.`;
+                    lowTimeWarning.style.display = 'block';
+                } else {
+                    lowTimeWarning.style.display = 'none';
+                }
             } else {
                 summary.style.display = 'none';
                 submitBtn.disabled = true;
+                lowTimeWarning.style.display = 'none';
             }
         }
 
