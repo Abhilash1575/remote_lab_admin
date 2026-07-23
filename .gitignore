@@ -1,4 +1,4 @@
 vlab.db
--e 
 __pycache__/
 *.pyc
+.env
