@@ -939,24 +939,25 @@ def google_callback():
             flash('Failed to get user info from Google', 'danger')
             return redirect(url_for('login'))
         
-        # Find or create user
+        # Only pre-existing accounts (created by an admin) may log in via
+        # Google -- unlike the old behavior, an unrecognized email is never
+        # auto-registered. This is what actually makes "only the uploaded
+        # list can get in" true; without it, Google login was a second open
+        # sign-up path regardless of what /signup did.
         user = User.query.filter_by(email=google_user['email'].lower()).first()
-        
+
         if not user:
-            # Create new user from Google data
-            user = User(
-                email=google_user['email'].lower(),
-                full_name=google_user.get('name', 'User'),
-                google_id=google_user.get('id', ''),
-                oauth_provider='google',
-                active=True
-            )
-            db.session.add(user)
-        else:
-            # Update existing user with Google info
-            user.google_id = google_user.get('id', '')
-            user.oauth_provider = 'google'
-        
+            flash('No account found for this Google account. Contact your administrator to be added.', 'danger')
+            return redirect(url_for('login'))
+
+        if not user.active:
+            flash('This account has been deactivated. Contact your administrator.', 'danger')
+            return redirect(url_for('login'))
+
+        # Update existing user with Google info
+        user.google_id = google_user.get('id', '')
+        user.oauth_provider = 'google'
+
         user.last_login_at = datetime.utcnow()
         user.last_login_ip = request.remote_addr
         db.session.commit()
@@ -973,40 +974,15 @@ def google_callback():
 @app.route('/signup', methods=['GET', 'POST'])
 @limiter.limit("10 per minute")
 def signup():
+    # Public self-registration is disabled: accounts are only created by an
+    # admin (Manage Users -> Bulk Upload), which emails the person a link to
+    # set their own password via the existing forgot-password flow. This
+    # route is kept (rather than removed) so old bookmarked/shared links to
+    # /signup get a clear explanation instead of a bare 404.
     if current_user.is_authenticated:
         return redirect(url_for('index'))
-    
-    if request.method == 'POST':
-        email = request.form['email']
-        full_name = request.form['full_name']
-        password = request.form['password']
-        confirm_password = request.form['confirm_password']
-        
-        if User.query.filter_by(email=email.lower()).first():
-            flash('Email already registered', 'danger')
-            return redirect(url_for('signup'))
-        
-        if password != confirm_password:
-            flash('Passwords do not match', 'danger')
-            return redirect(url_for('signup'))
-        
-        if not User.validate_password(password):
-            flash('Password must be at least 8 characters long and include uppercase, lowercase, number, and special character', 'danger')
-            return redirect(url_for('signup'))
-        
-        user = User(
-            email=email.lower(),
-            full_name=full_name,
-            active=True
-        )
-        user.password = password
-        db.session.add(user)
-        db.session.commit()
-        
-        flash('Your account has been created! You can now log in', 'success')
-        return redirect(url_for('login'))
-    
-    return render_template('signup.html')
+    flash('Public sign-up is disabled. Accounts are created by an administrator — contact yours to be added, or use "Forgot password" if you already have an account.', 'info')
+    return redirect(url_for('login'))
 
 # ---------- USER PROFILE ----------
 @app.route('/profile', methods=['GET', 'POST'])
