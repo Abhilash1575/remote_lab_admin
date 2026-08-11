@@ -1,6 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script>
+(function() {
+    var token = document.querySelector('meta[name="csrf-token"]').content;
+    var originalFetch = window.fetch;
+    window.fetch = function(url, options) {
+        options = options || {};
+        var method = (options.method || 'GET').toUpperCase();
+        if (method !== 'GET' && method !== 'HEAD') {
+            options.headers = options.headers || {};
+            if (options.headers instanceof Headers) {
+                options.headers.set('X-CSRFToken', token);
+            } else {
+                options.headers['X-CSRFToken'] = token;
+            }
+        }
+        return originalFetch(url, options);
+    };
+})();
+</script>
 <meta charset="utf-8" />
 <title id="pageTitle">Embedded Virtual Lab - Session Active</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">

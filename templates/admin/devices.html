@@ -1,6 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script>
+    (function() {
+        var token = document.querySelector('meta[name="csrf-token"]').content;
+        var originalFetch = window.fetch;
+        window.fetch = function(url, options) {
+            options = options || {};
+            var method = (options.method || 'GET').toUpperCase();
+            if (method !== 'GET' && method !== 'HEAD') {
+                options.headers = options.headers || {};
+                if (options.headers instanceof Headers) {
+                    options.headers.set('X-CSRFToken', token);
+                } else {
+                    options.headers['X-CSRFToken'] = token;
+                }
+            }
+            return originalFetch(url, options);
+        };
+    })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Lab Pis - Virtual Lab</title>
@@ -529,6 +549,7 @@
                 <span class="close" onclick="closeAddModal()">&times;</span>
             </div>
             <form method="POST" action="{{ url_for('manage_devices') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label for="device_name">Device Name</label>
                     <input type="text" id="device_name" name="device_name" required placeholder="e.g., Raspberry Pi 4">
@@ -587,7 +608,9 @@
         // Delete Device Function
         function deleteDevice(deviceId) {
             if (confirm('Are you sure you want to delete this device?')) {
-                window.location.href = '/admin/devices/delete/' + deviceId;
+                fetch('/admin/devices/delete/' + deviceId, { method: 'POST' })
+                    .then(() => window.location.reload())
+                    .catch(err => alert('Delete failed: ' + err));
             }
         }
 

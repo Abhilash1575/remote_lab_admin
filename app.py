@@ -16,11 +16,15 @@ import secrets
 import requests
 import csv
 import io
+from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from flask import Flask, send_from_directory, request, jsonify, render_template, abort, flash, redirect, url_for, Response, current_app, session
 from flask_socketio import SocketIO, emit
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from flask_mail import Mail, Message
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_wtf import CSRFProtect
 from werkzeug.utils import secure_filename
 
 # Import GPIO and Serial modules with fallback
@@ -84,26 +88,69 @@ TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
 UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads')
 DEFAULT_FW_DIR = os.path.join(BASE_DIR, 'default_fw')
 SOP_DIR = os.path.join(BASE_DIR, 'static')
+DATA_DIR = os.path.join(BASE_DIR, 'data')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(DEFAULT_FW_DIR, exist_ok=True)
 os.makedirs(SOP_DIR, exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
+
+load_dotenv(os.path.join(BASE_DIR, '.env'))
+
+
+def _get_or_create_secret_key():
+    """Session-signing key. Reads SECRET_KEY from the environment if set;
+    otherwise persists a randomly generated one to disk so it survives restarts
+    without ever being a hardcoded, publicly-visible value."""
+    env_key = os.environ.get('SECRET_KEY')
+    if env_key:
+        return env_key
+    key_path = os.path.join(DATA_DIR, 'secret_key')
+    if os.path.isfile(key_path):
+        with open(key_path) as f:
+            key = f.read().strip()
+        if key:
+            return key
+    key = secrets.token_hex(32)
+    with open(key_path, 'w') as f:
+        f.write(key)
+    os.chmod(key_path, 0o600)
+    return key
+
+
+def _require_env(name):
+    value = os.environ.get(name, '')
+    if not value:
+        print(f"[CONFIG] {name} is not set in the environment/.env — features that need it "
+              f"(mail sending, Google login) will fail until it's configured.")
+    return value
+
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
-app.config['SECRET_KEY'] = 'devkey'  # In production, use environment variable
+app.config['SECRET_KEY'] = _get_or_create_secret_key()
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(BASE_DIR, 'vlab.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
+app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
 app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'noreplyremotelab@gmail.com'
-app.config['MAIL_PASSWORD'] = 'eybo xxde akbe akui'
-app.config['MAIL_DEFAULT_SENDER'] = 'noreplyremotelab@gmail.com'
+app.config['MAIL_USERNAME'] = _require_env('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = _require_env('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', app.config['MAIL_USERNAME'])
 
 # Google OAuth configuration
-app.config['GOOGLE_CLIENT_ID'] = '648412093748-dq86s6ti7sn1n2651mmbvkerkjtd9hgk.apps.googleusercontent.com'
-app.config['GOOGLE_CLIENT_SECRET'] = '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'
+app.config['GOOGLE_CLIENT_ID'] = _require_env('GOOGLE_CLIENT_ID')
+app.config['GOOGLE_CLIENT_SECRET'] = _require_env('GOOGLE_CLIENT_SECRET')
+
+# Shared secret proving commands to a Lab Pi's /api/lab-pi/* endpoints really
+# came from this Admin Pi. Must match MASTER_API_KEY in each Lab Pi's .env.
+MASTER_API_KEY = os.environ.get('MASTER_API_KEY', '')
+if not MASTER_API_KEY:
+    print("[CONFIG] MASTER_API_KEY is not set — Lab Pi command endpoints that "
+          "enforce it will reject requests from this Admin Pi until it's configured "
+          "to match the value in each Lab Pi's .env.")
 
 socketio = SocketIO(app, async_mode='threading')
+limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri='memory://')
+csrf = CSRFProtect(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 login_manager.login_message_category = 'info'
@@ -791,6 +838,7 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
@@ -923,6 +971,7 @@ def google_callback():
         return redirect(url_for('login'))
 
 @app.route('/signup', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
 def signup():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
@@ -1000,6 +1049,7 @@ def logout():
     return redirect(url_for('index'))
 
 @app.route('/forgot_password', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
 def forgot_password():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
@@ -1033,6 +1083,7 @@ def forgot_password():
     return render_template('forgot_password.html')
 
 @app.route('/reset_password/<token>', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
 def reset_password(token):
     if current_user.is_authenticated:
         return redirect(url_for('index'))
@@ -1174,7 +1225,7 @@ def manage_devices():
     lab_pis = LabPi.query.all()
     return render_template('admin/devices.html', devices=devices, lab_pis=lab_pis)
 
-@app.route('/admin/devices/delete/<int:device_id>')
+@app.route('/admin/devices/delete/<int:device_id>', methods=['POST'])
 @login_required
 def delete_device(device_id):
     if not current_user.is_admin:
@@ -1736,7 +1787,7 @@ def manage_experiments():
     experiments = Experiment.query.all()
     return render_template('admin/experiments.html', experiments=experiments)
 
-@app.route('/admin/experiments/delete/<int:exp_id>')
+@app.route('/admin/experiments/delete/<int:exp_id>', methods=['POST'])
 @login_required
 def delete_experiment(exp_id):
     if not current_user.is_admin:
@@ -1866,7 +1917,7 @@ def manage_users():
     users = query.order_by(User.created_at.desc()).all()
     return render_template('admin/users.html', users=users, search_query=search_query)
 
-@app.route('/admin/users/delete/<int:user_id>')
+@app.route('/admin/users/delete/<int:user_id>', methods=['POST'])
 @login_required
 def delete_user(user_id):
     if not current_user.is_admin:
@@ -2285,7 +2336,7 @@ def manage_bookings():
     return render_template('admin/bookings.html', bookings=bookings, users=users, experiments=experiments,
                          current_status=status_filter, current_user=user_filter, current_experiment=experiment_filter, current_date=date_filter)
 
-@app.route('/admin/bookings/delete/<int:booking_id>')
+@app.route('/admin/bookings/delete/<int:booking_id>', methods=['POST'])
 @login_required
 def delete_booking(booking_id):
     if not current_user.is_admin:
@@ -2347,7 +2398,7 @@ def manage_sessions():
     return render_template('admin/sessions.html', sessions=sessions, users=users,
                          current_status=status_filter, current_user=user_filter, current_date=date_filter)
 
-@app.route('/admin/sessions/delete/<int:session_id>')
+@app.route('/admin/sessions/delete/<int:session_id>', methods=['POST'])
 @login_required
 def delete_session(session_id):
     if not current_user.is_admin:
@@ -2542,7 +2593,7 @@ def experiment():
                     'board_type': board_type,
                     'sop_file': sop_file
                 },
-                headers={'X-Lab-Pi-Id': lab_pi.lab_pi_id},
+                headers={'X-Lab-Pi-Id': lab_pi.lab_pi_id, 'X-Master-Api-Key': MASTER_API_KEY},
                 timeout=5
             )
             print(f"[EXPERIMENT] Lab Pi notification response: {response.status_code}")
@@ -3423,6 +3474,7 @@ def get_booking_by_key(session_key):
     })
 
 @app.route('/api/lab-pi/register', methods=['POST'])
+@csrf.exempt
 def lab_pi_register():
     """
     Register a Lab Pi with the Master Pi.
@@ -3527,6 +3579,7 @@ def lab_pi_register():
 
 
 @app.route('/api/lab-pi/heartbeat', methods=['POST'])
+@csrf.exempt
 def lab_pi_heartbeat():
     """
     Receive heartbeat from Lab Pi.
@@ -3625,6 +3678,7 @@ def lab_pi_heartbeat():
 
 
 @app.route('/api/lab-pi/session-end', methods=['POST'])
+@csrf.exempt
 def lab_pi_session_end():
     """
     Report session end from Lab Pi.
@@ -3915,6 +3969,7 @@ def admin_lab_pi_edit(lab_pi_id):
                         'sop_file': lab_pi.sop_file,
                         'experiment_id': lab_pi.experiment_id
                     },
+                    headers={'X-Master-Api-Key': MASTER_API_KEY},
                     timeout=2
                 )
             except Exception as e:
@@ -4018,10 +4073,13 @@ def admin_lab_pi_delete(lab_pi_id):
 
 
 @app.route('/api/lab-pi/<lab_pi_id>/command', methods=['POST'])
+@login_required
 def lab_pi_send_command(lab_pi_id):
     """
     Send command to a Lab Pi (e.g., start session, end session).
     """
+    if not current_user.is_admin:
+        return jsonify({'error': 'Admin access required'}), 403
     lab_pi = LabPi.query.filter_by(lab_pi_id=lab_pi_id).first()
     if not lab_pi:
         return jsonify({'error': 'Lab Pi not found'}), 404
@@ -4046,12 +4104,13 @@ def lab_pi_send_command(lab_pi_id):
                 requests.post(
                     f"http://{lab_pi.ip_address}:10000/api/lab-pi/session-start",
                     json={
-                        'session_key': session_key, 
+                        'session_key': session_key,
                         'booking_id': booking_id,
                         'experiment_name': experiment.name if experiment else 'Unknown',
                         'board_type': experiment.board_type if experiment else 'arduino',
                         'sop_file': experiment.sop_file if experiment else None
                     },
+                    headers={'X-Master-Api-Key': MASTER_API_KEY},
                     timeout=5
                 )
                 # Turn on relay
@@ -4098,6 +4157,7 @@ def lab_pi_send_command(lab_pi_id):
                     requests.post(
                         f"http://{lab_pi.ip_address}:10000/api/lab-pi/session-end",
                         json={'session_key': session_key},
+                        headers={'X-Master-Api-Key': MASTER_API_KEY},
                         timeout=5
                     )
             except Exception as e:
@@ -4194,6 +4254,7 @@ def lab_pi_send_command(lab_pi_id):
 # This endpoint receives audio from Lab Pi and broadcasts via SocketIO
 
 @app.route('/api/audio/stream', methods=['POST'])
+@csrf.exempt
 def receive_audio_stream():
     """
     Receive audio stream from Lab Pi and broadcast to connected clients via SocketIO
@@ -4370,6 +4431,19 @@ def send_sensor_data_to_clients(data):
         print("[ERROR] Failed to emit sensor_data:", e)
 
 # ---------- MAIN ----------
+# Runs unconditionally at import time (not just under `python app.py`) so a
+# production server (gunicorn importing `app:app`) still starts the session
+# monitor and Lab Pi heartbeat monitor — these used to live inside the
+# `if __name__ == '__main__'` guard below, which gunicorn never executes.
+print("========================================")
+print("Virtual Lab Server Starting...")
+print("========================================")
+
+start_session_monitor()
+start_lab_pi_heartbeat_monitor()
+server_ready = True
+print("Server ready - GPIO operations can now proceed")
+
 if __name__ == '__main__':
     import socket
     def check_port(port, name):
@@ -4384,10 +4458,6 @@ if __name__ == '__main__':
             print(f"✗ {name} is NOT running on port {port}")
             return False
 
-    print("========================================")
-    print("Virtual Lab Server Starting...")
-    print("========================================")
-
     audio_running = check_port(9000, "Audio server")
     if not audio_running:
         print("\n⚠️  Audio service not detected!")
@@ -4395,19 +4465,9 @@ if __name__ == '__main__':
         print("   sudo systemctl enable audio_stream.service")
         print("   sudo systemctl start audio_stream.service")
 
-    print("\nStarting Flask server on port 5000...")
+    print("\nStarting Flask server on port 5000 (dev mode — use gunicorn in production)...")
     print("========================================")
-    
-    # Start the session monitor background task
-    start_session_monitor()
-    
-    # Start the Lab Pi heartbeat monitor
-    start_lab_pi_heartbeat_monitor()
-    
-    # Signal that server is ready for GPIO operations
-    server_ready = True
-    print("Server ready - GPIO operations can now proceed")
-    
+
     try:
         socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
     finally:

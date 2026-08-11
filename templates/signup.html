@@ -1,6 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script>
+    (function() {
+        var token = document.querySelector('meta[name="csrf-token"]').content;
+        var originalFetch = window.fetch;
+        window.fetch = function(url, options) {
+            options = options || {};
+            var method = (options.method || 'GET').toUpperCase();
+            if (method !== 'GET' && method !== 'HEAD') {
+                options.headers = options.headers || {};
+                if (options.headers instanceof Headers) {
+                    options.headers.set('X-CSRFToken', token);
+                } else {
+                    options.headers['X-CSRFToken'] = token;
+                }
+            }
+            return originalFetch(url, options);
+        };
+    })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sign Up - Virtual Lab</title>
@@ -207,6 +227,7 @@
         {% endwith %}
 
         <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <label for="full_name">Full Name</label>
                 <input type="text" id="full_name" name="full_name" required placeholder="John Doe">

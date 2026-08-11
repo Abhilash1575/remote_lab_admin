@@ -115,6 +115,10 @@ MAIL_SERVER=smtp.gmail.com
 MAIL_PORT=587
 MAIL_USERNAME=your-email@gmail.com
 MAIL_PASSWORD=your-app-password
+
+# Google OAuth (from Google Cloud Console -> Credentials)
+GOOGLE_CLIENT_ID=your-oauth-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-oauth-client-secret
 EOF
     echo "Configuration written to .env with URL http://$LOCAL_IP:5000"
 else
@@ -135,7 +139,7 @@ Type=simple
 User=$USER
 WorkingDirectory=$PROJECT_DIR
 EnvironmentFile=$PROJECT_DIR/.env
-ExecStart=$PROJECT_DIR/venv/bin/python $PROJECT_DIR/app.py
+ExecStart=$PROJECT_DIR/venv/bin/gunicorn --worker-class gthread --threads 8 --workers 1 --timeout 120 --bind 0.0.0.0:5000 app:app
 Restart=always
 RestartSec=10
 

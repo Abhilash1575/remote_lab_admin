@@ -1,6 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script>
+    (function() {
+        var token = document.querySelector('meta[name="csrf-token"]').content;
+        var originalFetch = window.fetch;
+        window.fetch = function(url, options) {
+            options = options || {};
+            var method = (options.method || 'GET').toUpperCase();
+            if (method !== 'GET' && method !== 'HEAD') {
+                options.headers = options.headers || {};
+                if (options.headers instanceof Headers) {
+                    options.headers.set('X-CSRFToken', token);
+                } else {
+                    options.headers['X-CSRFToken'] = token;
+                }
+            }
+            return originalFetch(url, options);
+        };
+    })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>View Booking - Virtual Lab</title>
@@ -390,7 +410,9 @@
 
         function deleteBooking(bookingId) {
             if (confirm('Are you sure you want to delete this booking?')) {
-                window.location.href = '/admin/bookings/delete/' + bookingId;
+                fetch('/admin/bookings/delete/' + bookingId, { method: 'POST' })
+                    .then(() => window.location.href = '/admin/bookings')
+                    .catch(err => alert('Delete failed: ' + err));
             }
         }
     </script>
