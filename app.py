@@ -8,6 +8,7 @@ import queue
 import tempfile
 import re
 import random
+import hmac
 import json
 import math
 import asyncio
@@ -147,6 +148,20 @@ if not MASTER_API_KEY:
     print("[CONFIG] MASTER_API_KEY is not set — Lab Pi command endpoints that "
           "enforce it will reject requests from this Admin Pi until it's configured "
           "to match the value in each Lab Pi's .env.")
+
+
+def _verify_lab_pi_request():
+    """Confirm a POST to /api/lab-pi/register or /api/lab-pi/heartbeat really
+    came from a real Lab Pi (which must send the same MASTER_API_KEY in an
+    X-Master-Api-Key header), not just anyone on the network claiming an ID.
+    Without this, a spoofed heartbeat could redirect a real Lab Pi's session
+    traffic to an attacker-controlled IP. Same fail-open-with-warning
+    behavior as the Lab Pi side: if MASTER_API_KEY isn't configured yet,
+    allow through so this doesn't break an in-progress setup."""
+    if not MASTER_API_KEY:
+        return True
+    provided = request.headers.get('X-Master-Api-Key', '')
+    return hmac.compare_digest(provided, MASTER_API_KEY)
 
 socketio = SocketIO(app, async_mode='threading')
 limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri='memory://')
@@ -3456,6 +3471,8 @@ def lab_pi_register():
     Register a Lab Pi with the Master Pi.
     Called by Lab Pi on startup.
     """
+    if not _verify_lab_pi_request():
+        return jsonify({'error': 'unauthorized'}), 401
     data = request.get_json()
     
     # Validate required fields
@@ -3561,6 +3578,8 @@ def lab_pi_heartbeat():
     Receive heartbeat from Lab Pi.
     Called by Lab Pi every 30 seconds.
     """
+    if not _verify_lab_pi_request():
+        return jsonify({'error': 'unauthorized'}), 401
     data = request.get_json()
     lab_pi_id = request.headers.get('X-Lab-Pi-Id')
     
