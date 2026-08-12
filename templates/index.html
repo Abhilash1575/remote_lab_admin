@@ -1,36 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="csrf-token" content="{{ csrf_token() }}">
-<script>
-(function() {
-    var token = document.querySelector('meta[name="csrf-token"]').content;
-    var originalFetch = window.fetch;
-    window.fetch = function(url, options) {
-        options = options || {};
-        var method = (options.method || 'GET').toUpperCase();
-        if (method !== 'GET' && method !== 'HEAD') {
-            options.headers = options.headers || {};
-            if (options.headers instanceof Headers) {
-                options.headers.set('X-CSRFToken', token);
-            } else {
-                options.headers['X-CSRFToken'] = token;
-            }
-        }
-        return originalFetch(url, options);
-    };
-})();
-</script>
 <meta charset="utf-8" />
 <title id="pageTitle">Embedded Virtual Lab - Session Active</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/katex/katex.min.css') }}">
+<script src="{{ url_for('static', filename='vendor/katex/katex.min.js') }}"></script>
 <style>
 /* (kept your original styles with small fixes) */
 html,body{height:100%;margin:0;font-family:'Inter',sans-serif;background:#1c1c2b;color:#e0e0e0;overflow:hidden}
-.header-bar{background:#0b2545;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;height:44px}
+.header-bar{background:#0b2545;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;height:44px;position:relative}
+.header-experiment-name{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:14px;font-weight:600;color:#00f0ff;white-space:nowrap;max-width:40%;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 .header-bar h1{margin:0;font-size:16px}
 #timer{background:#e67e22;color:#1c1c2b;padding:6px 12px;border-radius:6px;font-weight:700}
 .container{display:flex;height:calc(100vh - 44px);gap:12px;padding:12px;box-sizing:border-box}
@@ -44,7 +27,6 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
 .danger{background:#ff6b6b;color:#101018;font-weight:700}
 #progressBar{height:10px;background:#222;border-radius:6px;overflow:hidden;border:1px solid #333}
 #progress{height:100%;width:0;background:linear-gradient(90deg,rgba(0,240,255,0.8),rgba(0,255,127,0.6));transition:width 0.25s}
-#feedbackList{font-family:'Roboto Mono',monospace;background:#000;color:#00ff7f;padding:8px;height:220px;overflow:auto;border:1px solid #00ff7f;white-space:pre-wrap}
 #dynamicControls{display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto} /* limit height and allow vertical scroll */
 .control-row{display:flex;gap:8px;align-items:center}
 .control-row label{min-width:90px}
@@ -60,19 +42,40 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
 .zoom-btn.expand{position:absolute;top:12px;right:140px}
 .label-muted{font-size:12px;color:#9aaab4;margin-left:6px}
 .readout-value{font-family:'Roboto Mono',monospace;font-size:16px;color:#00ff7f;background:#101018;padding:4px 8px;border-radius:4px;min-width:100px;text-align:right;}
+.readout-unit{color:#9aaab4;font-size:13px}
+.readout-unit .katex{color:#9aaab4}
+.serial-slot{border:1px solid #333;border-radius:8px;padding:10px;margin-bottom:10px}
+.serial-slot:last-child{margin-bottom:0}
+.serial-slot-label{font-weight:700;margin-bottom:6px;color:#00f0ff}
+.slot-feedback{font-family:'Roboto Mono',monospace;background:#000;color:#00ff7f;padding:8px;height:140px;overflow:auto;border:1px solid #00ff7f;white-space:pre-wrap;font-size:12px}
 /* dropdown styling */
 .var-dropdown{display:none;position:absolute;top:38px;left:0;background:#1e1e2f;border:1px solid #00f0ff55;border-radius:8px;box-shadow:0 0 10px rgba(0,255,255,0.3);z-index:10;min-width:140px;max-height:260px;overflow:auto}
 .var-dropdown .item{padding:8px 10px;cursor:pointer;border-bottom:1px solid #00f0ff22;color:#00f0ff}
 .var-dropdown .item:hover{background:#00f0ff22}
+/* Dynamic-control add dialog */
+.control-dialog-overlay{position:fixed;inset:0;background:rgba(4,6,15,0.65);display:flex;align-items:center;justify-content:center;z-index:2000;animation:cdFadeIn .12s ease-out}
+@keyframes cdFadeIn{from{opacity:0}to{opacity:1}}
+.control-dialog-box{background:#252538;border:1px solid #3d3d52;border-radius:12px;padding:22px 24px;width:340px;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,0.55)}
+.control-dialog-box h3{margin:0 0 16px 0;color:#00f0ff;font-size:16px}
+.control-dialog-row{margin-bottom:13px;display:flex;flex-direction:column;gap:5px}
+.control-dialog-row label{font-size:12px;color:#9aaab4;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.control-dialog-row input,.control-dialog-row select{padding:9px 10px;border-radius:6px;border:1px solid #3d3d52;background:#1c1c2b;color:#00f0ff;font-size:14px;font-family:'Roboto Mono',monospace}
+.control-dialog-row input:focus,.control-dialog-row select:focus{outline:none;border-color:#00f0ff;box-shadow:0 0 0 2px #00f0ff33}
+.control-dialog-hint{font-size:11px;color:#6d7a85}
+.control-dialog-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.control-dialog-btns button{padding:8px 16px}
+.control-dialog-cancel{background:#3d3d52;color:#e0e0e0}
 @media(max-width:900px){.container{flex-direction:column}.left-column{width:100%;order:2}.right-column{order:1}}
 /* small layout tweaks for the new button card */
 .left-controls-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .left-controls-row button{flex:1}
+.admin-disabled{opacity:0.45 !important;cursor:not-allowed !important;filter:grayscale(40%)}
 </style>
 </head>
 <body>
 <div class="header-bar">
-  <h1 id="experimentTitle">Virtual Lab DESE : {{ experiment_name|default('Experiment') }} Session</h1>
+  <h1 id="experimentTitle"> Remote Lab DESE </h1>
+  <div id="experimentNameCenter" class="header-experiment-name" style="{{ 'display:none' if not ui_config.experiment_name }}">{{ ui_config.experiment_name }}</div>
   <div id="timer">Time Left: 00:00</div>
 </div>
 
@@ -80,7 +83,7 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
 <div id="sessionClosed" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#1c1c2b; color:#e0e0e0; z-index:9999; align-items:center; justify-content:center; flex-direction:column; font-size:2em;">
   <h2>Session Closed</h2>
   <p>Book another slot to continue.</p>
-  <button onclick="window.location.href='/'" style="padding:10px 20px; background:#00f0ff; color:#041726; border:none; border-radius:6px; font-weight:700;">Go to Homepage</button>
+  <button onclick="window.location.href='{{ booking_page_url }}'" style="padding:10px 20px; background:#00f0ff; color:#041726; border:none; border-radius:6px; font-weight:700;">Go to My Bookings</button>
 </div>
 
 <div class="container">
@@ -88,26 +91,16 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
     <div class="card">
       <h3>Board & Firmware Upload</h3>
 
-      <label style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+<label style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
         Board
-        <select id="boardType" class="small-input" style="width:160px;margin-left:6px">
-          <option value="esp32">esp32</option>
-          <option value="esp8266">esp8266</option>
-          <option value="arduino">arduino</option>
-          <option value="attiny">attiny</option>
-          <option value="stm32">stm32</option>
-          <option value="nucleo_f446re">nucleo_f446re</option>
-          <option value="black_pill">black_pill</option>
-          <option value="tiva">tiva</option>
-          <option value="tms320f28377s">tms320f28377s</option>
-          <option value="msp430">msp430</option>
-          <option value="generic">generic</option>
+        <select id="boardType" class="small-input" style="width:160px;margin-left:6px" {{ 'disabled' if not ui_config.controls.board_select }}>
+          <option value="{{ board_type }}">{{ board_type }}</option>
         </select>
       </label>
 
-      <input id="firmwareInput" type="file" accept=".bin,.hex,.out,.txt,.dfu" style="width:100%;margin-bottom:8px">
+      <input id="firmwareInput" type="file" accept=".bin,.hex,.out,.txt,.dfu" style="width:100%;margin-bottom:8px" {{ 'disabled' if not ui_config.controls.flash_firmware }}>
       <div style="display:flex;gap:8px;margin-bottom:8px">
-        <button class="primary" id="flashBtn">Flash Firmware</button>
+        <button class="primary" id="flashBtn" {{ 'disabled' if not ui_config.controls.flash_firmware }}>Flash Firmware</button>
         <button id="cancelFlash" style="background:#444;color:#fff;border-radius:6px;padding:8px 10px">Cancel</button>
       </div>
       <div id="progressBar"><div id="progress"></div></div>
@@ -119,60 +112,71 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
       <h3>Quick Actions</h3>
       <div class="left-controls-row" style="margin-bottom:8px">
         <!-- Factory Reset (red danger button as requested - option 1) -->
-        <button id="factoryResetBtn" class="danger">Factory Reset</button>
+        <button id="factoryResetBtn" class="danger" {{ 'disabled' if not ui_config.controls.factory_reset }}>Factory Reset</button>
 
         <!-- View / Download SOP -->
-        <button id="viewSopBtn" class="primary">View SOP</button>
+        <button id="viewSopBtn" class="primary">View Manual</button>
 
         <!-- Power Supply Control -->
-        <button id="powerSupplyBtn" class="primary" style="background:#2ecc71; color:#1c1c2b">Power Supply OFF</button>
+        <button id="powerSupplyBtn" class="primary" style="background:#2ecc71; color:#1c1c2b" {{ 'disabled' if not ui_config.controls.power_supply }}>Power Supply OFF</button>
       </div>
       <div style="font-size:13px;color:#9aaab4"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="serialMonitorCard" style="{{ 'display:none' if not ui_config.controls.serial_monitor_section }}">
       <h3>Serial Monitor & Connect</h3>
-      <div style="display:flex;gap:8px;margin-bottom:8px">
-        <select id="baudSelect" class="small-input">
-          <option>300</option><option>1200</option><option>2400</option><option>4800</option><option>9600</option>
-          <option>19200</option><option>38400</option><option>57600</option><option selected>115200</option>
-          <option>230400</option><option>custom</option>
-        </select>
-        <input id="customBaud" class="small-input" placeholder="Custom" style="width:80px;display:none">
-        <select id="serialPort" class="small-input" style="width:140px"></select>
-        <button id="refreshPorts" style="background:#333;color:#fff;border-radius:6px;padding:6px 8px">Refresh</button>
+      {% for p in ui_config.serial_ports %}
+      {% if p.student_visible %}
+      <div class="serial-slot" data-conn-id="{{ p.id }}" data-fixed-port="{{ p.port }}" data-baud="{{ p.baud }}" data-allow-disconnect="{{ 'true' if p.allow_disconnect else 'false' }}" data-auto-connect="{{ 'true' if p.auto_connect else 'false' }}">
+        <div class="serial-slot-label">{{ p.label }}</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          {% if p.port %}
+          <span class="note" style="color:#9aaab4;font-size:13px;align-self:center">{{ p.port }}</span>
+          {% endif %}
+          {# Baud is always student-adjustable, even when the admin has fixed the port itself. #}
+          {% set standard_bauds = [300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400] %}
+          <select class="slot-baud small-input">
+            {% for b in standard_bauds %}
+            <option {{ 'selected' if p.baud == b }}>{{ b }}</option>
+            {% endfor %}
+            <option {{ 'selected' if p.baud not in standard_bauds }}>custom</option>
+          </select>
+          <input class="slot-custom-baud small-input" placeholder="Custom" style="width:80px;{{ 'display:none' if p.baud in standard_bauds }}" value="{{ p.baud if p.baud not in standard_bauds else '' }}">
+          {% if not p.port %}
+          <select class="slot-port small-input" style="width:140px"></select>
+          <button class="slot-refresh" style="background:#333;color:#fff;border-radius:6px;padding:6px 8px">Refresh</button>
+          {% endif %}
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <button class="slot-connect" style="background:#2ecc71;color:#fff" {{ 'disabled' if not ui_config.controls.serial_connect }}>Connect</button>
+          <button class="slot-reset" style="background:#f39c12;color:#101018;border-radius:6px" {{ 'disabled' if not ui_config.controls.serial_connect }}>Reset MCU</button>
+          <button class="slot-clear" style="background:#333;color:#fff;border-radius:6px">Clear</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input class="slot-cmd" placeholder="Type command and press Send" style="flex:1;padding:6px;border-radius:6px;border:none;background:#3d3d52;color:#00f0ff">
+          <button class="primary slot-send">Send</button>
+        </div>
+        <div class="slot-feedback">waiting for device...</div>
       </div>
-      <div style="display:flex;gap:8px;margin-bottom:8px">
-        <button id="connectBtn" style="background:#2ecc71;color:#1c1c2b">Connect</button>
-        <button id="clearLog" style="background:#333;color:#fff;border-radius:6px">Clear</button>
-      </div>
-
-      <div style="display:flex;gap:8px;margin-bottom:8px">
-        <input id="cmdInput" placeholder="Type command and press Send" style="flex:1;padding:6px;border-radius:6px;border:none;background:#3d3d52;color:#00f0ff">
-        <button class="primary" id="sendBtn">Send</button>
-      </div>
-
-      <div id="feedbackList">waiting for device...</div>
+      {% endif %}
+      {% endfor %}
     </div>
 
-    <div class="card">
+    <div class="card" id="dynamicControlsCard" style="{{ 'display:none' if not ui_config.defaults.dynamic_controls_visible }}">
       <h3>Dynamic Controls</h3>
       <div style="display:flex;gap:8px;margin-bottom:8px">
         <div style="position:relative;display:inline-block">
-          <button id="addSlider" class="primary">Add Slider ⏷</button>
+          <button id="addSlider" class="primary" {{ 'disabled' if not ui_config.controls.student_controls_addition }}>Add Slider</button>
+        </div>
+
+        <div style="position:relative;display:inline-block">
+          <button id="addButton" class="primary" {{ 'disabled' if not ui_config.controls.student_controls_addition }}>Add Button</button>
+        </div>
+
+        <div style="position:relative;display:inline-block">
+          <button id="addReadout" class="primary" {{ 'disabled' if not ui_config.controls.student_controls_addition }}>Add Readout ⏷</button>
           <div id="varDropdown" class="var-dropdown"></div>
         </div>
-
-        <div style="position:relative;display:inline-block">
-          <button id="addButton" class="primary">Add Button ⏷</button>
-        </div>
-
-        <div style="position:relative;display:inline-block">
-          <button id="addReadout" class="primary">Add Readout ⏷</button>
-        </div>
-
-        <button id="saveLayout" style="background:#2ecc71">Save Layout</button>
-        <button id="loadLayout" style="background:#f39c12">Load Layout</button>
       </div>
       <div id="dynamicControls"></div>
       <div style="margin-top:8px;color:#9aaab4;font-size:13px">Click the small ❌ on a control to remove it.</div>
@@ -180,50 +184,115 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
   </div>
 
   <div class="right-column">
-    <div class="card" id="chartCard">
-      <h3>Real-time Sensor Data Chart 📈</h3>
-      <button class="zoom-btn expand" id="expandChartBtn" title="Open Chart in New Tab">[ ]</button>
-      <button id="openOscilloscopeBtn" class="zoom-btn" style="right:180px" title="Open Oscilloscope">CRO</button>
-      <button id="chartZoomReset" class="zoom-btn reset" title="Reset Zoom">■</button>
-      <button id="chartZoomOut" class="zoom-btn minus" title="Zoom Out">-</button>
-      <button id="chartZoomIn" class="zoom-btn" title="Zoom In">+</button>
-      <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-        <label style="display:flex;gap:6px;align-items:center">X-Axis
-          <select id="xAxisFilter" class="small-input" style="width:140px;margin-left:6px">
-            <option value="time">Time (s)</option><option value="samples">Samples</option>
+    <div class="card" id="chartCard" style="{{ 'display:none' if not (ui_config.controls.serial_plotter or ui_config.controls.oscilloscope) }}">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:10px;">
+        <h3 style="margin:0;">Real-time Sensor Data Chart</h3>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span style="font-size:11px; color:#888; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px;">Current View:</span>
+          <select id="mainUiMode" class="small-input" style="background: #00f0ff; color: #000; font-weight: bold; width: 140px;">
+            {% if ui_config.controls.serial_plotter %}<option value="plotter" {{ 'selected' if ui_config.defaults.main_view == 'plotter' }}>Serial Plotter</option>{% endif %}
+            {% if ui_config.controls.oscilloscope %}<option value="oscilloscope" {{ 'selected' if ui_config.defaults.main_view == 'oscilloscope' }}>Oscilloscope</option>{% endif %}
           </select>
-        </label>
-
-        <label style="display:flex;gap:6px;align-items:center">Y-Axis 1
-          <select id="yAxisFilter1" class="small-input" style="width:140px;margin-left:6px"></select>
-        </label>
-
-        <label style="display:flex;gap:6px;align-items:center">Y-Axis 2
-          <select id="yAxisFilter2" class="small-input" style="width:140px;margin-left:6px">
-            <option value="">(Disabled)</option>
-          </select>
-        </label>
-        <button id="exportCSV" style="background:#444;color:#fff;border-radius:6px;padding:8px 10px">Export CSV</button>
+          <!-- Buttons moved inside flex container to avoid overlap -->
+          <div id="mainZoomButtons" style="display:flex; gap:4px;">
+            <button id="chartZoomReset" style="background:#f39c12; color:#101018; font-weight:700; padding:4px 8px; border-radius:4px;" title="Reset Zoom">■</button>
+            <button id="chartZoomOut" style="background:#00f0ff; color:#041726; font-weight:700; padding:4px 8px; border-radius:4px;" title="Zoom Out">-</button>
+            <button id="chartZoomIn" style="background:#00f0ff; color:#041726; font-weight:700; padding:4px 8px; border-radius:4px;" title="Zoom In">+</button>
+          </div>
+          <button id="expandChartBtn" style="background:#00f0ff; color:#041726; font-weight:700; padding:4px 8px; border-radius:4px;" title="Open Chart in New Tab">[ ]</button>
+        </div>
       </div>
+      <!-- Removed original absolute buttons -->
+      <!-- Wrapper for Plotter-only controls -->
+      <div id="mainPlotterControls">
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+          <label style="display:flex;gap:6px;align-items:center">Port
+            <select id="chartPortSelect" class="small-input" style="width:140px;margin-left:6px" {{ 'disabled' if not ui_config.defaults.serial_plotter_allow_port_switch }}>
+              {% for p in ui_config.serial_ports %}{% if p.student_visible or p.plotter_visible %}
+              <option value="{{ p.id }}" {{ 'selected' if p.id == ui_config.defaults.serial_plotter_default_port_id }}>{{ p.label }}</option>
+              {% endif %}{% endfor %}
+            </select>
+          </label>
 
-      <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-        <label>Scaling: <button id="mainScalingToggle" class="primary">Auto</button></label>
-        <div id="mainManualControls" style="display:none; gap:8px; display:flex; align-items:center;">
-          <label>Y1 Max: <input type="number" id="mainY1Max" class="small-input" value="100" min="0" step="10"></label>
-          <button id="mainY1Plus" class="primary">+</button>
-          <button id="mainY1Minus" class="primary">-</button>
-          <label>Y2 Max: <input type="number" id="mainY2Max" class="small-input" value="100" min="0" step="10"></label>
-          <button id="mainY2Plus" class="primary">+</button>
-          <button id="mainY2Minus" class="primary">-</button>
+          <label style="display:flex;gap:6px;align-items:center">X-Axis
+            <select id="xAxisFilter" class="small-input" style="width:140px;margin-left:6px">
+              <option value="time">Time (s)</option><option value="samples">Samples</option>
+            </select>
+          </label>
+
+          <label style="display:flex;gap:6px;align-items:center">Y-Axis 1
+            <select id="yAxisFilter1" class="small-input" style="width:140px;margin-left:6px"></select>
+          </label>
+
+          <label style="display:flex;gap:6px;align-items:center">Y-Axis 2
+            <select id="yAxisFilter2" class="small-input" style="width:140px;margin-left:6px">
+              <option value="">(Disabled)</option>
+            </select>
+          </label>
+          <button id="exportCSV" style="background:#444;color:#fff;border-radius:6px;padding:8px 10px">Export CSV</button>
+        </div>
+
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+          <label>Scaling: <button id="mainScalingToggle" class="primary">Auto</button></label>
+          <div id="mainManualControls" style="display:none; gap:8px; display:flex; align-items:center;">
+            <label>Y1 Max: <input type="number" id="mainY1Max" class="small-input" value="100" min="0" step="10"></label>
+            <button id="mainY1Plus" class="primary">+</button>
+            <button id="mainY1Minus" class="primary">-</button>
+            <label>Y2 Max: <input type="number" id="mainY2Max" class="small-input" value="100" min="0" step="10"></label>
+            <button id="mainY2Plus" class="primary">+</button>
+            <button id="mainY2Minus" class="primary">-</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:8px;align-items:center">
+          <button id="pauseChart" class="primary">Pause Chart</button>
+          <div class="label-muted" id="chartStatus">Running — last update: --</div>
         </div>
       </div>
 
-      <div style="border-radius:8px;overflow:hidden;background:#0e1116;padding:6px">
-        <canvas id="mainChart"></canvas>
+      <!-- Wrapper for OSC-only controls (initially hidden) -->
+      <div id="mainOscControls" style="display:none; gap:12px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+        <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:#FFDD00;font-weight:600;"><span style="width:8px;height:8px;border-radius:50%;background:#FFDD00;display:inline-block;"></span>CH1</span>
+        <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:#00FFFF;font-weight:600;"><span style="width:8px;height:8px;border-radius:50%;background:#00FFFF;display:inline-block;"></span>CH2</span>
+        <label>Trig Src:
+          <select id="mainOscTrigSrc" class="small-input" style="width:60px;">
+            <option value="0">CH1</option>
+            <option value="1">CH2</option>
+          </select>
+        </label>
+        <label>Trig V: <input type="number" id="mainOscTrigV" class="small-input" value="1.65" step="0.05" style="width:60px;"></label>
+        <label>Edge: 
+          <select id="mainOscEdge" class="small-input">
+            <option value="rising">Rising ↑</option>
+            <option value="falling">Falling ↓</option>
+          </select>
+        </label>
+        <label>V-Scale: 
+          <select id="mainOscVScale" class="small-input" style="width:60px;">
+            <option value="0.5">0.5x</option>
+            <option value="1.0" selected>1x</option>
+            <option value="2.0">2x</option>
+            <option value="5.0">5x</option>
+          </select>
+        </label>
+        <label>V-Pos: <input type="range" id="mainOscVPos" min="-1.5" max="1.5" step="0.1" value="0" style="width:70px;"></label>
+        <label>H-Scale: 
+          <select id="mainOscHScale" class="small-input" style="width:60px;">
+            <option value="1.0" selected>1x</option>
+            <option value="2.0">2x</option>
+            <option value="5.0">5x</option>
+          </select>
+        </label>
+        <button id="mainOscAutoBtn" class="primary" style="padding:4px 8px;">Auto</button>
+        <button id="mainOscFreezeBtn" class="primary" style="padding:4px 8px; background:#2ecc71;">Freeze</button>
+        <div id="mainOscStats" style="font-family:monospace; font-size:12px; color:#00ff7f; display:flex; gap:10px;">
+          <span>Freq: <span id="mainOscFreq">-</span></span>
+          <span>Vpp: <span id="mainOscVpp">-</span></span>
+        </div>
       </div>
-      <div style="display:flex;gap:12px;margin-top:8px;align-items:center">
-        <button id="pauseChart" class="primary">Pause Chart</button>
-        <div class="label-muted" id="chartStatus">Running — last update: --</div>
+
+      <div style="border-radius:8px;overflow:hidden;background:#0e1116;padding:6px; height:320px; position:relative;">
+        <canvas id="mainChart"></canvas>
+        <canvas id="mainOscCanvas" style="display:none; width:100%; height:100%;"></canvas>
       </div>
     </div>
 
@@ -231,10 +300,12 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
       <h3>Live Video Feed</h3>
       <div class="video-container">
         <img id="videoFeed" alt="camera">
+    <audio id="audioFeed" autoplay></audio>
         <button id="expandVideoBtn" class="zoom-btn expand" title="Open Video in New Tab">[ ]</button>
         <button id="zoomReset" class="zoom-btn reset">■</button>
         <button id="zoomOut" class="zoom-btn minus">-</button>
         <button id="zoomIn" class="zoom-btn">+</button>
+        <button id="toggleAudio" class="toggle-btn">Start Audio</button>
         <button id="toggleVideo" class="small-toggle">Video OFF</button>
       </div>
       <div style="margin-top:8px;color:#9aaab4"></div>
@@ -245,42 +316,189 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
 <script>
 const sessionDuration = {{ session_duration | tojson }};
 const sessionEndTimeFromServer = {{ session_end_time | tojson }};
+const boardTypeFromServer = {{ board_type | tojson }};
+const BOOKING_PAGE_URL = {{ booking_page_url | tojson }};
+const uiConfigFromServer = {{ ui_config | tojson }};
 console.log('[DEBUG] sessionDuration:', sessionDuration);
 console.log('[DEBUG] sessionEndTimeFromServer:', sessionEndTimeFromServer);
 console.log('[DEBUG] Date.now():', Date.now());
+console.log('[DEBUG] boardTypeFromServer:', boardTypeFromServer);
 </script>
 
 <script>
-// This page is served BY the Master PC, and everything it talks to (fetch
-// calls, the socket below, the camera feed) is a Master route too — the
-// Master proxies through to whichever Lab Pi is running this session. This
-// page never addresses a Lab Pi directly. See MASTER_UI_MIGRATION_PLAN.md.
-const BASE_URL = window.location.origin;  // e.g., http://master-host:5000
-
-/* ----------------- SESSION MANAGEMENT ----------------- */
-// Parsed before the socket connects below, since the session_key has to go
-// on the connection itself (a plain io.connect() doesn't inherit this
-// page's querystring for free).
+// This page is served BY the Master PC. sessionKey has to be known before the
+// socket connects below (it goes on the connection's query string — a plain
+// io.connect() doesn't inherit this page's querystring for free) — see
+// remote_lab_admin/app.py's socket 'connect' handler and lab_pi_relay.py.
 const urlParams = new URLSearchParams(window.location.search);
 const sessionKey = urlParams.get('key');
-let openedWindows = []; // Track opened windows for cleanup
-
-// Camera stream and audio (WebRTC signaling) are both proxied through the
-// Master — see /session/<key>/camera-stream and /session/<key>/audio-offer
-// in remote_lab_admin/app.py, and audio_relay.py for the two-peer-connection
-// relay behind the audio one.
-const videoUrl = `${BASE_URL}/session/${sessionKey}/camera-stream`;
-const audioOfferUrl = `${BASE_URL}/session/${sessionKey}/audio-offer`;
-
-console.log('Video URL (proxied via Master):', videoUrl);
-console.log('Audio offer URL (proxied via Master):', audioOfferUrl);
 
 /* ----------------- SOCKET.IO ----------------- */
-// query.key tells the Master which Lab Pi to relay this connection's events
-// to/from — see the 'connect' handler in remote_lab_admin/app.py.
 const socket = io.connect(window.location.origin, {
   transports: ['websocket', 'polling'],
   query: { key: sessionKey },
+});
+let currentUiConfig = uiConfigFromServer; // kept in sync by applyUiConfig() on every live update
+
+const BASE_URL = window.location.origin;
+
+// Camera and audio are both proxied through the Master — see
+// /session/<key>/camera-stream and /session/<key>/audio-offer in
+// remote_lab_admin/app.py. The browser never addresses the Lab Pi directly.
+const videoUrl = `${BASE_URL}/session/${sessionKey}/camera-stream`;
+const audioOfferUrl = `${BASE_URL}/session/${sessionKey}/audio-offer`;
+
+// --- MODE SWITCHING ---
+const mainUiMode = document.getElementById('mainUiMode');
+const mainPlotterControls = document.getElementById('mainPlotterControls');
+const mainOscControls = document.getElementById('mainOscControls');
+const mainChartCanvas = document.getElementById('mainChart');
+const mainOscCanvas = document.getElementById('mainOscCanvas');
+const mainZoomButtons = document.getElementById('mainZoomButtons');
+
+function updateModeVisibility() {
+  const mode = mainUiMode.value;
+  console.log('[Mode] Switching to:', mode);
+  if (mode === 'plotter') {
+    mainPlotterControls.style.display = 'block';
+    mainOscControls.style.display = 'none';
+    mainChartCanvas.style.display = 'block';
+    mainOscCanvas.style.display = 'none';
+    if(mainZoomButtons) mainZoomButtons.style.display = 'flex';
+  } else {
+    mainPlotterControls.style.display = 'none';
+    mainOscControls.style.display = 'flex';
+    mainChartCanvas.style.display = 'none';
+    mainOscCanvas.style.display = 'block';
+    if(mainZoomButtons) mainZoomButtons.style.display = 'none';
+    
+    // Ensure canvas is sized after display:block
+    setTimeout(resizeMainOscCanvas, 50); 
+  }
+}
+
+mainUiMode.addEventListener('change', updateModeVisibility);
+
+// --- MAIN OSCILLOSCOPE LOGIC ---
+const mainOscCtx = mainOscCanvas.getContext('2d');
+let lastMainOscData = null;
+
+function resizeMainOscCanvas() {
+  if (mainOscCanvas.offsetParent !== null) { // Only resize if visible
+    mainOscCanvas.width = mainOscCanvas.clientWidth;
+    mainOscCanvas.height = mainOscCanvas.clientHeight;
+    console.log('[OSC] Main Canvas resized:', mainOscCanvas.width, 'x', mainOscCanvas.height);
+  }
+}
+window.addEventListener('resize', resizeMainOscCanvas);
+
+socket.on('osc_data', (data) => {
+  if (mainUiMode.value !== 'oscilloscope') return;
+  lastMainOscData = data;
+  const freqEl = document.getElementById('mainOscFreq');
+  const vppEl = document.getElementById('mainOscVpp');
+  const srcIsCh2 = document.getElementById('mainOscTrigSrc').value === '1';
+  const freq = srcIsCh2 ? data.ch2_freq : data.ch1_freq;
+  const vpp = srcIsCh2 ? data.ch2_vpp : data.ch1_vpp;
+  if(freqEl) freqEl.textContent = freq ? (freq > 1000 ? (freq/1000).toFixed(2)+'k' : freq.toFixed(1)) + ' Hz' : '-';
+  if(vppEl) vppEl.textContent = vpp ? vpp.toFixed(2) + ' V' : '-';
+});
+
+function renderMainOscCurve(samples, visibleCount, w, voltToY, color) {
+  mainOscCtx.strokeStyle = color;
+  mainOscCtx.lineWidth = 1.5;
+  mainOscCtx.beginPath();
+  for (let i = 0; i < visibleCount; i++) {
+    const x = (i / (visibleCount - 1)) * w;
+    const y = voltToY(samples[i]);
+    if (i === 0) mainOscCtx.moveTo(x, y); else mainOscCtx.lineTo(x, y);
+  }
+  mainOscCtx.stroke();
+}
+
+function renderMainOsc() {
+  if (mainUiMode.value === 'oscilloscope' && lastMainOscData) {
+    const { ch1, ch2 } = lastMainOscData;
+    const w = mainOscCanvas.width;
+    const h = mainOscCanvas.height;
+    if (w > 0 && h > 0) {
+      mainOscCtx.clearRect(0, 0, w, h);
+
+      const vScale = parseFloat(document.getElementById('mainOscVScale').value || 1.0);
+      const vPos = parseFloat(document.getElementById('mainOscVPos').value || 0);
+      const hScale = parseFloat(document.getElementById('mainOscHScale').value || 1.0);
+
+      const voltToY = (v) => {
+        const scaledV = (v - 1.65) * vScale + 1.65 + vPos;
+        return h - (scaledV / 3.3) * h;
+      };
+
+      // Grid
+      mainOscCtx.strokeStyle = '#3a3a5a';
+      mainOscCtx.lineWidth = 1;
+      for (let x = 0; x <= w; x += w / 10) { mainOscCtx.beginPath(); mainOscCtx.moveTo(x, 0); mainOscCtx.lineTo(x, h); mainOscCtx.stroke(); }
+      for (let y = 0; y <= h; y += h / 8) { mainOscCtx.beginPath(); mainOscCtx.moveTo(0, y); mainOscCtx.lineTo(w, y); mainOscCtx.stroke(); }
+
+      // 0V Level (1.65V offset)
+      const zeroY = voltToY(1.65);
+      mainOscCtx.strokeStyle = '#ffff00';
+      mainOscCtx.lineWidth = 1;
+      mainOscCtx.setLineDash([4, 4]);
+      mainOscCtx.beginPath(); mainOscCtx.moveTo(0, zeroY); mainOscCtx.lineTo(w, zeroY); mainOscCtx.stroke();
+      mainOscCtx.setLineDash([]);
+      mainOscCtx.fillStyle = '#ffff00';
+      mainOscCtx.font = '10px monospace';
+      mainOscCtx.fillText('1.65V (0V)', 10, zeroY - 5);
+
+      // Trigger Level
+      const trigV = parseFloat(document.getElementById('mainOscTrigV').value || 1.65);
+      const trigY = voltToY(trigV);
+      mainOscCtx.strokeStyle = '#ff5555';
+      mainOscCtx.lineWidth = 1;
+      mainOscCtx.setLineDash([6, 4]);
+      mainOscCtx.beginPath(); mainOscCtx.moveTo(0, trigY); mainOscCtx.lineTo(w, trigY); mainOscCtx.stroke();
+      mainOscCtx.setLineDash([]);
+
+      // Waveforms — CH1 (yellow), CH2 (cyan)
+      const visibleCount = Math.floor(Math.min(ch1.length, ch2.length) / hScale);
+      renderMainOscCurve(ch1, visibleCount, w, voltToY, '#FFDD00');
+      renderMainOscCurve(ch2, visibleCount, w, voltToY, '#00FFFF');
+    }
+  }
+  requestAnimationFrame(renderMainOsc);
+}
+
+// Start rendering loop and initialize visibility
+requestAnimationFrame(renderMainOsc);
+updateModeVisibility();
+
+function syncMainOscSettings() {
+  socket.emit('update_osc_settings', {
+    trig_v: parseFloat(document.getElementById('mainOscTrigV').value),
+    trig_src: parseInt(document.getElementById('mainOscTrigSrc').value),
+    rising: document.getElementById('mainOscEdge').value === 'rising'
+  });
+}
+['mainOscTrigV', 'mainOscTrigSrc', 'mainOscEdge', 'mainOscVScale', 'mainOscVPos', 'mainOscHScale'].forEach(id => {
+  const el = document.getElementById(id);
+  if(el) el.addEventListener('change', syncMainOscSettings);
+});
+document.getElementById('mainOscAutoBtn').addEventListener('click', () => socket.emit('osc_auto_level'));
+
+let mainOscIsFrozen = false;
+const mainOscFreezeBtn = document.getElementById('mainOscFreezeBtn');
+mainOscFreezeBtn.addEventListener('click', () => {
+  mainOscIsFrozen = !mainOscIsFrozen;
+  socket.emit('update_osc_settings', { freeze: mainOscIsFrozen });
+  mainOscFreezeBtn.innerText = mainOscIsFrozen ? 'Frozen' : 'Freeze';
+  mainOscFreezeBtn.style.background = mainOscIsFrozen ? '#ff6b6b' : '#2ecc71';
+});
+
+socket.on('osc_settings_sync', (data) => {
+  if (data.trig_v !== undefined) {
+    const el = document.getElementById('mainOscTrigV');
+    if(el) el.value = data.trig_v;
+  }
 });
 
 /* ----------------- UI refs ----------------- */
@@ -288,41 +506,23 @@ const flashBtn = document.getElementById('flashBtn');
 const progressEl = document.getElementById('progress');
 const flashStatus = document.getElementById('flashStatus');
 const cancelFlash = document.getElementById('cancelFlash');
-const baudSelect = document.getElementById('baudSelect');
-const customBaud = document.getElementById('customBaud');
-const connectBtn = document.getElementById('connectBtn');
-const serialPortSelect = document.getElementById('serialPort');
-const refreshPorts = document.getElementById('refreshPorts');
-const feedbackList = document.getElementById('feedbackList');
-const sendBtn = document.getElementById('sendBtn');
-const cmdInput = document.getElementById('cmdInput');
-const clearLog = document.getElementById('clearLog');
+const chartPortSelect = document.getElementById('chartPortSelect');
 const dynamicControls = document.getElementById('dynamicControls');
 const addReadoutBtn = document.getElementById('addReadout');
 const addSliderBtn = document.getElementById('addSlider');
 const addButtonBtn = document.getElementById('addButton');
-const saveLayoutBtn = document.getElementById('saveLayout');
-const loadLayoutBtn = document.getElementById('loadLayout');
 const boardType = document.getElementById('boardType');
-
-// Set board type from server-rendered value
-const serverBoardType = '{{ board_type|default('arduino') }}';
-if (serverBoardType) {
-  boardType.value = serverBoardType;
-}
 
 const factoryResetBtn = document.getElementById('factoryResetBtn');
 const viewSopBtn = document.getElementById('viewSopBtn');
 const powerSupplyBtn = document.getElementById('powerSupplyBtn');
 
+let openedWindows = []; // Track opened windows for cleanup
+
 /* ----------------- POWER SUPPLY CONTROL ----------------- */
 let powerSupplyState = 'off'; // Initial state is OFF
-let powerButtonLocked = false; // Prevent rapid clicking
 
 powerSupplyBtn.addEventListener('click', async () => {
-  if (powerButtonLocked) return; // Prevent double-click
-  powerButtonLocked = true;
-  
   try {
     const newState = powerSupplyState === 'off' ? 'on' : 'off';
     const response = await fetch('/toggle_relay', {
@@ -340,15 +540,12 @@ powerSupplyBtn.addEventListener('click', async () => {
       powerSupplyState = newState;
       powerSupplyBtn.innerText = `Power Supply ${newState.toUpperCase()}`;
       powerSupplyBtn.style.background = newState === 'on' ? '#ff6b6b' : '#2ecc71';
-      feedbackAdd(`[power] Power supply turned ${newState}`);
+      console.log(`[power] Power supply turned ${newState}`);
     } else {
-      feedbackAdd(`[power] Error turning power ${newState}: ${result.message || 'Unknown error'}`);
+      console.log(`[power] Error turning power ${newState}: ${result.message || 'Unknown error'}`);
     }
   } catch (error) {
-    feedbackAdd(`[power] Request failed: ${error}`);
-  } finally {
-    // Re-enable button after a short delay
-    setTimeout(() => { powerButtonLocked = false; }, 1000);
+    console.log(`[power] Request failed: ${error}`);
   }
 });
 
@@ -361,36 +558,159 @@ const yAxisFilter2 = document.getElementById('yAxisFilter2');
 
 const varDropdown = document.getElementById('varDropdown');
 
-let connectTimeoutHandle = null;
 let socketConnected = false;
 let sampleCount = 0; // alias for compatibility with new sensor_data handler
 let running = true;
 let lastSelectedKey1 = ''; // track last selected key to clear chart when changed
 
-/* ----------------- Helpers ----------------- */
-function feedbackAdd(line){
+/* ----------------- SERIAL MONITOR SLOTS (multi-port) ----------------- */
+// One slot per admin-configured, student-visible serial port profile. Each slot
+// tracks its own connection/UI state, keyed by conn_id (the profile's id).
+const serialSlots = {};
+
+function slotFeedbackAdd(slot, text){
   const prefix = (new Date()).toLocaleTimeString() + ' ';
-  feedbackList.innerText += prefix + line + '\n';
-  const lines = feedbackList.innerText.split('\n');
-  if(lines.length > 300) feedbackList.innerText = lines.slice(-300).join('\n');
-  feedbackList.scrollTop = feedbackList.scrollHeight;
+  slot.feedbackEl.innerText += prefix + text + '\n';
+  const lines = slot.feedbackEl.innerText.split('\n');
+  if(lines.length > 300) slot.feedbackEl.innerText = lines.slice(-300).join('\n');
+  slot.feedbackEl.scrollTop = slot.feedbackEl.scrollHeight;
+}
+
+function doSlotConnect(slot){
+  if (slot.connected) {
+    if (!slot.allowDisconnect) return; // disconnect locked by admin for this port
+    socket.emit('disconnect_serial', { conn_id: slot.connId });
+    slotFeedbackAdd(slot, 'Requested disconnect.');
+    return;
+  }
+  const port = slot.fixedPort || (slot.portSelect ? slot.portSelect.value : '') || '/dev/ttyUSB0';
+  // Baud is always student-adjustable, even on a port whose device path the admin fixed.
+  const baud = (slot.baudSelect.value === 'custom') ? parseInt(slot.customBaud.value || '115200') : parseInt(slot.baudSelect.value);
+  slot.connectBtn.disabled = true;
+  slot.connectBtn.textContent = 'Connecting...';
+  slotFeedbackAdd(slot, `Connecting to ${port}@${baud} ...`);
+  socket.emit('connect_serial', { conn_id: slot.connId, port, baud });
+  if (slot.connectTimeoutHandle) clearTimeout(slot.connectTimeoutHandle);
+  slot.connectTimeoutHandle = setTimeout(() => {
+    slotFeedbackAdd(slot, '⚠️ Serial connect timed out (no response).');
+    slot.connectBtn.disabled = false;
+    slot.connectBtn.textContent = 'Connect';
+  }, 6000);
+}
+
+// Auto-connect once on load for profiles where the student picks the port (blank
+// "port" in the admin config) but auto-connect is still on. Fixed-port profiles
+// with auto-connect are connected server-side instead (see sync_serial_profiles).
+function maybeAutoConnectSlot(slot){
+  if (slot.autoConnectAttempted || slot.connected) return;
+  if (!uiConfigFromServer.controls.serial_connect) return;
+  if (!slot.autoConnect) return;
+  if (!slot.portSelect || !slot.portSelect.value) return; // no port detected yet
+  slot.autoConnectAttempted = true;
+  doSlotConnect(slot);
+}
+
+function sendSlotCommand(slot){
+  const txt = slot.cmdInput.value.trim();
+  if (!txt) return;
+  socket.emit('send_command', { conn_id: slot.connId, cmd: txt });
+  slot.cmdInput.value = '';
+}
+
+function initSerialSlots(){
+  document.querySelectorAll('.serial-slot').forEach(el => {
+    const connId = el.dataset.connId;
+    const slot = {
+      el, connId,
+      fixedPort: el.dataset.fixedPort || '',
+      fixedBaud: parseInt(el.dataset.baud, 10) || 115200,
+      allowDisconnect: el.dataset.allowDisconnect === 'true',
+      autoConnect: el.dataset.autoConnect === 'true',
+      portSelect: el.querySelector('.slot-port'),
+      baudSelect: el.querySelector('.slot-baud'),
+      customBaud: el.querySelector('.slot-custom-baud'),
+      connectBtn: el.querySelector('.slot-connect'),
+      resetBtn: el.querySelector('.slot-reset'),
+      clearBtn: el.querySelector('.slot-clear'),
+      feedbackEl: el.querySelector('.slot-feedback'),
+      cmdInput: el.querySelector('.slot-cmd'),
+      sendBtn: el.querySelector('.slot-send'),
+      refreshBtn: el.querySelector('.slot-refresh'),
+      connected: false,
+      autoConnectAttempted: false,
+      connectTimeoutHandle: null,
+      resetTimeoutHandle: null,
+    };
+    serialSlots[connId] = slot;
+
+    if (slot.baudSelect) {
+      slot.baudSelect.addEventListener('change', () => {
+        slot.customBaud.style.display = slot.baudSelect.value === 'custom' ? 'inline-block' : 'none';
+      });
+    }
+    if (slot.refreshBtn) slot.refreshBtn.addEventListener('click', requestPorts);
+    slot.connectBtn.addEventListener('click', () => doSlotConnect(slot));
+    if (slot.resetBtn) slot.resetBtn.addEventListener('click', () => {
+      // Works even if this slot isn't currently connected — the server opens
+      // the port just long enough to pulse it, then closes it again — so pass
+      // along the port/baud the same way doSlotConnect would.
+      const port = slot.fixedPort || (slot.portSelect ? slot.portSelect.value : '') || '';
+      const baud = (slot.baudSelect.value === 'custom') ? parseInt(slot.customBaud.value || '115200') : parseInt(slot.baudSelect.value);
+      socket.emit('reset_serial', { conn_id: slot.connId, port, baud });
+      slotFeedbackAdd(slot, 'Requested MCU reset...');
+      const originalText = slot.resetBtn.textContent;
+      slot.resetBtn.disabled = true;
+      slot.resetBtn.textContent = 'Resetting...';
+      if (slot.resetTimeoutHandle) clearTimeout(slot.resetTimeoutHandle);
+      slot.resetTimeoutHandle = setTimeout(() => {
+        slot.resetBtn.disabled = !uiConfigFromServer.controls.serial_connect;
+        slot.resetBtn.textContent = originalText;
+      }, 900);
+    });
+    slot.clearBtn.addEventListener('click', () => { slot.feedbackEl.innerText = ''; });
+    slot.sendBtn.addEventListener('click', () => sendSlotCommand(slot));
+    slot.cmdInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); sendSlotCommand(slot); }
+    });
+  });
+}
+initSerialSlots();
+
+// The serial-port profile that generic slider/button commands (send_command
+// with no explicit conn_id) are written to server-side; used here to pick
+// which port firmware flashing targets.
+function getFlashPort(){
+  const primaryProfile = (uiConfigFromServer.serial_ports || []).find(p => p.is_primary_target);
+  const slot = primaryProfile && serialSlots[primaryProfile.id];
+  if (slot) return slot.fixedPort || (slot.portSelect ? slot.portSelect.value : '') || '';
+  const anySlot = Object.values(serialSlots)[0];
+  return anySlot ? (anySlot.fixedPort || (anySlot.portSelect ? anySlot.portSelect.value : '')) : '';
 }
 
 /* ----------------- PORTS (auto-detect) ----------------- */
 function requestPorts(){
   socket.emit('list_ports');
 }
-refreshPorts.addEventListener('click', requestPorts);
 socket.on('ports_list', (ports) => {
-  serialPortSelect.innerHTML = '';
-  if(!ports || ports.length===0){
-    const opt = document.createElement('option'); opt.value=''; opt.innerText = '(none)';
-    serialPortSelect.appendChild(opt);
-    return;
-  }
-  ports.forEach(p => {
-    const opt = document.createElement('option'); opt.value = p; opt.innerText = p;
-    serialPortSelect.appendChild(opt);
+  Object.values(serialSlots).forEach(slot => {
+    if (slot.fixedPort || !slot.portSelect) return; // fixed-port profiles don't need a dropdown
+    const previous = slot.portSelect.value;
+    slot.portSelect.innerHTML = '';
+    if (!ports || ports.length === 0) {
+      const opt = document.createElement('option'); opt.value=''; opt.innerText = '(none)';
+      slot.portSelect.appendChild(opt);
+      return;
+    }
+    ports.forEach(p => {
+      const opt = document.createElement('option'); opt.value = p; opt.innerText = p;
+      slot.portSelect.appendChild(opt);
+    });
+    // Keep whatever the student had selected, if it's still available; otherwise
+    // falls back to the browser's natural first-option selection.
+    if (!slot.connected && previous && ports.includes(previous)) {
+      slot.portSelect.value = previous;
+    }
+    maybeAutoConnectSlot(slot);
   });
 });
 requestPorts();
@@ -401,7 +721,7 @@ if(flashBtn) {
     const file = document.getElementById('firmwareInput').files[0];
     if(!file){ alert('Select a firmware file'); return; }
     const board = boardType.value;
-    const port = serialPortSelect.value || '';
+    const port = getFlashPort();
     flashBtn.disabled = true; cancelFlash.disabled = false;
     flashStatus.innerText='Uploading firmware...';
     progressEl.style.width = '4%';
@@ -427,7 +747,6 @@ socket.on('flashing_status', (d) => {
   if(!d) return;
   const txt = String(d);
   flashStatus.innerText = txt;
-  feedbackAdd('[flash] ' + txt);
   const m = txt.match(/(\d{1,3})%/);
   if(m) progressEl.style.width = m[1] + '%';
   if(/complete|done|success|✅/i.test(txt)){
@@ -439,24 +758,25 @@ socket.on('flashing_status', (d) => {
 /* ----------------- FACTORY RESET (client) ----------------- */
 factoryResetBtn.addEventListener('click', async () => {
   const board = boardType.value || 'generic';
+  const port = getFlashPort();
   const confirmReset = confirm(`Factory Reset will flash the default firmware for board: ${board}.\nProceed?`);
   if(!confirmReset) return;
   try {
-    feedbackAdd(`[factory] Requesting factory reset for ${board}...`);
+    console.log(`[factory] Requesting factory reset for ${board} on ${port || '(server default)'}...`);
     const resp = await fetch('/factory_reset', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ board, session_key: sessionKey })
+      body: JSON.stringify({ board, port, session_key: sessionKey })
     });
     const j = await resp.json();
     if(resp.ok){
-      feedbackAdd(`[factory] ${j.status || 'Factory reset started'}`);
+      console.log(`[factory] ${j.status || 'Factory reset started'}`);
     } else {
-      feedbackAdd(`[factory] ERROR: ${j.error || JSON.stringify(j)}`);
+      console.log(`[factory] ERROR: ${j.error || JSON.stringify(j)}`);
       alert('Factory reset failed: ' + (j.error || 'unknown'));
     }
   } catch (e) {
-    feedbackAdd(`[factory] Request failed: ${e}`);
+    console.log(`[factory] Request failed: ${e}`);
     alert('Factory reset request failed: ' + e);
   }
 });
@@ -467,148 +787,164 @@ viewSopBtn.addEventListener('click', () => {
   window.open('/sop/exp.pdf', '_blank');
 });
 
-/* ----------------- SERIAL CONNECT / MONITOR ----------------- */
-baudSelect.addEventListener('change', () => {
-  if(baudSelect.value === 'custom') customBaud.style.display = 'inline-block';
-  else customBaud.style.display = 'none';
-});
-
-let serialConnected = false;
-
-connectBtn.addEventListener('click', () => {
-  if (serialConnected) {
-    socket.emit('disconnect_serial');
-    feedbackAdd('Requested disconnect.');
-    return;
-  }
-  
-  const port = serialPortSelect.value || '/dev/ttyUSB0';
-  const baud = (baudSelect.value==='custom') ? parseInt(customBaud.value||'115200') : parseInt(baudSelect.value);
-  connectBtn.disabled = true;
-  connectBtn.textContent = 'Connecting...';
-  feedbackAdd(`Connecting to ${port}@${baud} ...`);
-  socket.emit('connect_serial', { port, baud });
-  if(connectTimeoutHandle) clearTimeout(connectTimeoutHandle);
-  connectTimeoutHandle = setTimeout(() => {
-    feedbackAdd('⚠️ Serial connect timed out (no response).');
-    connectBtn.disabled = false;
-    connectBtn.textContent = 'Connect';
-  }, 6000);
-});
-
-sendBtn.addEventListener('click', () => {
-  const txt = cmdInput.value.trim(); if(!txt) return;
-  socket.emit('send_command', { cmd: txt });
-  feedbackAdd('> ' + txt); cmdInput.value = '';
-});
-
-cmdInput.addEventListener('keydown', (e) => {
-  if(e.key === 'Enter'){
-    e.preventDefault();
-    sendBtn.click();
-  }
-});
-clearLog.addEventListener('click', () => { feedbackList.innerText=''; });
-
+/* ----------------- SERIAL CONNECT / MONITOR (per-slot status) ----------------- */
 socket.on('serial_status', (info) => {
-  if(connectTimeoutHandle){ clearTimeout(connectTimeoutHandle); connectTimeoutHandle = null; }
-  if(info && info.status === 'connected'){
-    serialConnected = true;
-    connectBtn.disabled = false;
-    connectBtn.textContent = 'Disconnect';
-    connectBtn.style.background = '#ff6b6b';
-    connectBtn.style.color = '#101018';
-    feedbackAdd(`✅ Connected: ${info.port}@${info.baud}`);
-    requestPorts(); // refresh port list again
-    socket.emit('list_ports'); // optional redundant safety
+  if (!info) return;
+  const slot = serialSlots[info.conn_id || 'default'];
+  if (!slot) return;
+  if (slot.connectTimeoutHandle) { clearTimeout(slot.connectTimeoutHandle); slot.connectTimeoutHandle = null; }
+  if (info.status === 'connected') {
+    slot.connected = true;
+    slot.connectBtn.disabled = !slot.allowDisconnect;
+    slot.connectBtn.textContent = slot.allowDisconnect ? 'Disconnect' : 'Connected';
+    slot.connectBtn.title = slot.allowDisconnect ? '' : 'Disconnect locked by lab administrator';
+    slot.connectBtn.style.background = '#ff6b6b';
+    slot.connectBtn.style.color = '#fff';
+    slotFeedbackAdd(slot, `✅ Connected: ${info.port}@${info.baud}`);
+    requestPorts(); // refresh port lists again (other slots may need updating)
     updateYAxisFilterOptions([]); // prepare Y-axis dropdowns for dynamic data
-
-  } else if(info && info.status === 'error'){
-    serialConnected = false;
-    connectBtn.disabled = false;
-    connectBtn.textContent = 'Connect';
-    connectBtn.style.background = '#2ecc71';
-    connectBtn.style.color = '#1c1c2b';
-    feedbackAdd(`🔴 Serial error: ${info.message || ''}`);
+  } else if (info.status === 'error') {
+    slot.connected = false;
+    slot.connectBtn.disabled = false;
+    slot.connectBtn.textContent = 'Connect';
+    slot.connectBtn.style.background = '#2ecc71';
+    slot.connectBtn.style.color = '#fff';
+    slotFeedbackAdd(slot, `🔴 Serial error: ${info.message || ''}`);
   } else {
-    serialConnected = false;
-    connectBtn.disabled = false;
-    connectBtn.textContent = 'Connect';
-    connectBtn.style.background = '#2ecc71';
-    connectBtn.style.color = '#1c1c2b';
-    feedbackAdd(`🔴 Disconnected`);
+    slot.connected = false;
+    slot.connectBtn.disabled = false;
+    slot.connectBtn.textContent = 'Connect';
+    slot.connectBtn.style.background = '#2ecc71';
+    slot.connectBtn.style.color = '#fff';
+    slotFeedbackAdd(slot, `🔴 Disconnected`);
   }
 });
 
-/* handle raw feedback lines (we parse many formats here) */
-function parseLineToMap(line){
-  // Flexible parsing for various key-value formats
-  // Accepts separators: ',', ';', '|', '/', '\\', and within pairs: ':', '=', '>', '<', ' ', '&', etc.
-  // Handles multiple pairs per line, even without commas
-  // Also handles single pair per line
-  const out = {};
-  if(!line || typeof line !== 'string') return out;
-  // Remove timestamps (common when prefs append "15:22:33 " etc) by dropping leading time if it's like HH:MM:SS
-  const trimmed = line.trim().replace(/^\d{1,2}:\d{2}:\d{2}\s*/, '');
-  // First, split on common separators: comma, semicolon, pipe, slash, backslash
-  const pairGroups = trimmed.split(/[,;|\/\\]/);
-  pairGroups.forEach(group => {
-    if(!group.trim()) return;
-    // Normalize separators within the group to spaces
-    const normalized = group.replace(/[:=>@#>^!$*~\\|+%-\s&|\/\\]+/g, ' ').trim();
-    // Split into tokens
-    const tokens = normalized.split(/\s+/);
-    // Pair every two tokens as key value
-    for(let i = 0; i < tokens.length; i += 2){
-      if(i + 1 < tokens.length){
-        const k = tokens[i].trim().toLowerCase();
-        const rawv = tokens[i + 1].trim();
-        // Try to parse value
-        const num = Number(rawv);
-        if(!isNaN(num)) out[k] = num;
-        else {
-          // try boolean like 0/1 or 'on'/'off'
-          if(rawv === '1' || rawv.toLowerCase() === 'on' || rawv.toLowerCase() === 'true') out[k] = 1;
-          else if(rawv === '0' || rawv.toLowerCase() === 'off' || rawv.toLowerCase() === 'false') out[k] = 0;
-          else {
-            // not numeric - store raw string
-            out[k] = rawv;
-          }
-        }
-      }
-    }
-  });
-  return out;
-}
-
-socket.on('feedback', (line) => {
-  if(line === undefined || line === null) return;
-  const text = String(line);
-  feedbackAdd(text);
-
-  // If this feedback line contains key/value pairs, parse and feed into sensor_data handler
-  try {
-    // quick check for presence of separators and at least one digit
-    if((text.includes(':') || text.includes('|') || text.includes('=') || text.includes('@') || text.includes(';') || text.includes(',') || text.includes('/') || text.includes('\\')) && /\d/.test(text)){
-      const parsed = parseLineToMap(text);
-      // Only emit if parsed contains at least one numeric value
-      const hasNumeric = Object.values(parsed).some(v => typeof v === 'number' && !isNaN(v));
-      if(Object.keys(parsed).length > 0 && hasNumeric){
-        // update known keys on client side and also call sensor_data handler directly
-        socket.emit('sensor_data', parsed); // We call the same event name the server uses - processed client-side too
-      }
-    }
-  } catch(e){ /* ignore parse errors */ }
+/* Server-side serial_reader_worker already parses key/value lines into sensor_data
+   per connection, so the client just routes each raw feedback line to its slot's log. */
+socket.on('feedback', (payload) => {
+  if (payload === undefined || payload === null) return;
+  if (typeof payload === 'string') { console.log('[feedback]', payload); return; } // defensive, legacy shape
+  const { conn_id, text } = payload;
+  if (conn_id === null || conn_id === undefined) { console.log('[server]', text); return; }
+  const slot = serialSlots[conn_id];
+  if (slot) slotFeedbackAdd(slot, text);
 });
 
 /* ----------------- DYNAMIC CONTROLS (auto variable choices) ----------------- */
-let knownSensorKeys = new Set(); // dynamic now
+let knownSensorKeys = new Set(); // dynamic now - starts empty, populated from current data
+
+/* Themed replacement for chained prompt() calls: one form, all fields at once.
+   Returns a Promise resolving to {key: value, ...} or null if cancelled. */
+function showControlDialog(opts) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'control-dialog-overlay';
+
+    const box = document.createElement('div');
+    box.className = 'control-dialog-box';
+
+    const heading = document.createElement('h3');
+    heading.innerText = opts.title;
+    box.appendChild(heading);
+
+    const inputs = {};
+    (opts.fields || []).forEach((f) => {
+      const row = document.createElement('div');
+      row.className = 'control-dialog-row';
+      const lbl = document.createElement('label');
+      lbl.innerText = f.label;
+      lbl.htmlFor = 'cd-' + f.key;
+      row.appendChild(lbl);
+      let inp;
+      if (f.type === 'select') {
+        inp = document.createElement('select');
+        (f.options || []).forEach((o) => {
+          const opt = document.createElement('option');
+          opt.value = o.value;
+          opt.innerText = o.label;
+          if (String(o.value) === String(f.value)) opt.selected = true;
+          inp.appendChild(opt);
+        });
+      } else {
+        inp = document.createElement('input');
+        inp.type = f.type || 'text';
+        if (inp.type === 'number') inp.step = f.step || 'any'; // allow decimals, not just whole-number steps
+        if (f.value !== undefined) inp.value = f.value;
+        if (f.placeholder) inp.placeholder = f.placeholder;
+      }
+      inp.id = 'cd-' + f.key;
+      row.appendChild(inp);
+      if (f.hint) {
+        const hint = document.createElement('div');
+        hint.className = 'control-dialog-hint';
+        hint.innerText = f.hint;
+        row.appendChild(hint);
+      }
+      box.appendChild(row);
+      inputs[f.key] = inp;
+    });
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'control-dialog-btns';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'control-dialog-cancel';
+    cancelBtn.innerText = 'Cancel';
+    const submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'primary';
+    submitBtn.innerText = opts.submitLabel || 'Add';
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(submitBtn);
+    box.appendChild(btnRow);
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    const finish = (result) => { overlay.remove(); resolve(result); };
+    cancelBtn.addEventListener('click', () => finish(null));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(null); });
+    submitBtn.addEventListener('click', () => {
+      const values = {};
+      Object.keys(inputs).forEach((k) => { values[k] = inputs[k].value; });
+      finish(values);
+    });
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); submitBtn.click(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancelBtn.click(); }
+    });
+
+    const first = Object.values(inputs)[0];
+    if (first) { first.focus(); if (first.select) first.select(); }
+  });
+}
+
+/* Renders a readout's unit as LaTeX (e.g. admin types ^\circ\text{C}) via the
+   locally-vendored KaTeX; falls back to plain text if KaTeX isn't loaded or the
+   source doesn't parse (e.g. a plain "V" or "A" typed without LaTeX syntax). */
+function renderUnitLatex(el, unitSource){
+  if (!unitSource) { el.innerHTML = ''; return; }
+  if (window.katex) {
+    try {
+      window.katex.render(unitSource, el, { throwOnError: false });
+      return;
+    } catch (e) { /* fall through to plain text */ }
+  }
+  el.innerText = unitSource;
+}
+
 function createControlElement(cfg){
   const wrapper = document.createElement('div');
   wrapper.className='control-row';
   wrapper.style.border='1px solid #333';
   wrapper.style.padding='8px';
   wrapper.style.borderRadius='8px';
+  if(cfg.locked){
+    wrapper.classList.add('locked-control');
+    wrapper.dataset.requiredId = cfg.requiredId || '';
+    wrapper.style.borderColor = '#00f0ff88';
+  }
 
   const content = document.createElement('div');
   content.style.flex='1';
@@ -623,73 +959,75 @@ function createControlElement(cfg){
   label.style.minWidth='100px';
   content.appendChild(label);
 
-  const removeBtn = document.createElement('button');
-  removeBtn.innerText='❌';
-  removeBtn.style.marginLeft='8px';
-  removeBtn.onclick = () => wrapper.remove();
+  let removeBtn = null;
+  if(!cfg.locked){
+    removeBtn = document.createElement('button');
+    removeBtn.innerText='❌';
+    removeBtn.style.marginLeft='8px';
+    removeBtn.onclick = () => { wrapper.remove(); saveLayoutToStorage(); };
+  }
 
   /* ============ SLIDER CONTROL ============ */
   if(cfg.type === 'slider'){
-    const varSelect = document.createElement('select');
-    varSelect.className='small-input';
-    varSelect.style.width='120px';
-    varSelect.style.marginRight='8px';
-    Array.from(knownSensorKeys).forEach(k => {
-      const o = document.createElement('option');
-      o.value=k;
-      o.innerText=k;
-      varSelect.appendChild(o);
-    });
-    if(cfg.dataKey) varSelect.value = cfg.dataKey;
-
+    // Label already shows the name - add data-key to slider for saving
     const slider = document.createElement('input');
     slider.type='range';
-    slider.min = cfg.min || 0;
-    slider.max = cfg.max || 1023;
-    slider.value = cfg.value !== undefined ? cfg.value : Math.floor(((Number(slider.min)||0)+(Number(slider.max)||1023))/2);
+    slider.setAttribute('data-key', cfg.dataKey || '');
+    const cmdFormat = cfg.cmdFormat || '{value}';
+    slider.setAttribute('data-cmd-format', cmdFormat);
+    // Resolution: 0 = whole numbers, 1 = "0.0", 2 = "0.00"
+    const precision = Math.max(0, Math.min(2, parseInt(cfg.precision, 10) || 0));
+    slider.setAttribute('data-precision', precision);
+    slider.min = cfg.min !== undefined ? cfg.min : 0;
+    slider.max = cfg.max !== undefined ? cfg.max : 1023;
+    slider.step = precision > 0 ? (1 / Math.pow(10, precision)) : 1;
+    const initialValue = cfg.value !== undefined ? Number(cfg.value) : ((Number(slider.min)||0)+(Number(slider.max)||1023))/2;
+    slider.value = initialValue.toFixed(precision);
     slider.style.flex='1';
 
     const valSpan = document.createElement('span');
-    valSpan.innerText = slider.value;
+    valSpan.innerText = Number(slider.value).toFixed(precision);
     valSpan.style.marginLeft='8px';
     valSpan.style.minWidth='30px';
 
     let sliderTimeout = null;
-    let fixedVar = cfg.dataKey || varSelect.value; // lock selected variable
 
     slider.oninput = () => {
-      valSpan.innerText = slider.value;
-      const cmd = `${slider.value}`;  // ✅ send ONLY the numeric value
+      const displayValue = Number(slider.value).toFixed(precision);
+      valSpan.innerText = displayValue;
+      const cmd = cmdFormat.replace(/\{value\}/g, displayValue);  // e.g. "{value}" -> "42.00", "I{value}" -> "I42.00"
       if (sliderTimeout) clearTimeout(sliderTimeout);
       sliderTimeout = setTimeout(() => {
-        socket.emit('send_command', { cmd });
-        feedbackAdd(`(slider ${fixedVar}) sent value: ${cmd}`);
+        // cfg.portId locks this control to a specific board (e.g. a required
+        // control pinned to the Teacher MCU); blank = primary target, as before.
+        socket.emit('send_command', cfg.portId ? { cmd, conn_id: cfg.portId } : { cmd });
       }, 120);
     };
 
 
-    content.appendChild(varSelect);
     content.appendChild(slider);
     content.appendChild(valSpan);
   }
 
  /* ============ TOGGLE BUTTON CONTROL (send only your custom commands) ============ */
 else if(cfg.type === 'button'){
-  const onCmd = prompt('Enter command for ON state (send only value or full string):', '1') || '';
-  const offCmd = prompt('Enter command for OFF state:', '0') || '';
-  
+  const onCmd = cfg.onCmd !== undefined ? cfg.onCmd : (prompt('Enter command for ON state (send only value or full string):', '1') || '');
+  const offCmd = cfg.offCmd !== undefined ? cfg.offCmd : (prompt('Enter command for OFF state:', '0') || '');
+
   const btn = document.createElement('button');
   btn.className = 'primary';
   btn.innerText = cfg.label || 'TOGGLE';
   btn.style.minWidth = '120px';
-  
+  btn.setAttribute('data-on-cmd', onCmd);
+  btn.setAttribute('data-off-cmd', offCmd);
+
   let toggled = false;
   btn.onclick = () => {
     toggled = !toggled;
     btn.style.opacity = toggled ? '0.7' : '1';
     const cmd = toggled ? onCmd : offCmd;
-    socket.emit('send_command', { cmd });  // ✅ sends only what you typed, e.g. "1" or "0"
-    feedbackAdd(`(button ${cfg.label}) sent: ${cmd}`);
+    // cfg.portId locks this control to a specific board; blank = primary target.
+    socket.emit('send_command', cfg.portId ? { cmd, conn_id: cfg.portId } : { cmd });  // ✅ sends only what you typed, e.g. "1" or "0"
   };
   content.appendChild(btn);
 }
@@ -697,74 +1035,219 @@ else if(cfg.type === 'button'){
 
   /* ============ READOUT CONTROL ============ */
   else if(cfg.type === 'readout'){
-    const keySelect = document.createElement('select');
-    keySelect.className='small-input';
-    keySelect.style.width='140px';
-    keySelect.style.marginRight='8px';
-    Array.from(knownSensorKeys).forEach(k => {
-      const o = document.createElement('option');
-      o.value=k;
-      o.innerText=k;
-      keySelect.appendChild(o);
-    });
+    // Label already shows the name
     const valSpan = document.createElement('span');
     valSpan.className='readout-value';
     valSpan.id = 'readout-' + Math.random().toString(36).slice(2,9);
-    valSpan.setAttribute('data-key', cfg.dataKey || keySelect.value);
+    valSpan.setAttribute('data-key', cfg.dataKey || '');
     valSpan.setAttribute('data-unit', cfg.unit || '');
-    valSpan.setAttribute('data-decimals', isNaN(cfg.decimals) ? '' : cfg.decimals);
+    valSpan.setAttribute('data-decimals', cfg.decimals || '');
+    valSpan.setAttribute('data-port-id', cfg.portId || '');
     valSpan.innerText='--';
-    keySelect.onchange = () => valSpan.setAttribute('data-key', keySelect.value);
-    content.appendChild(keySelect);
+
+    const unitSpan = document.createElement('span');
+    unitSpan.className = 'readout-unit';
+    renderUnitLatex(unitSpan, cfg.unit || '');
+
     content.appendChild(valSpan);
+    content.appendChild(unitSpan);
   }
 
   wrapper.appendChild(content);
-  wrapper.appendChild(removeBtn);
+  if(removeBtn) wrapper.appendChild(removeBtn);
   dynamicControls.appendChild(wrapper);
 }
 
-/* Add slider — uses varDropdown items (varDropdown is managed below) */
-addSliderBtn.addEventListener('click', () => {
-  // show varDropdown with mode slider
-  showVarDropdown('slider');
+/* Admin-required controls: always present, not removable/editable by students.
+   Diffed by data-required-id so it's safe to call on every ui_config update. */
+function renderRequiredControls(list) {
+  if (!dynamicControls) return;
+  const incomingIds = new Set((list || []).map(c => c.id));
+  dynamicControls.querySelectorAll('.locked-control').forEach(row => {
+    if (!incomingIds.has(row.dataset.requiredId)) row.remove();
+  });
+  const existingIds = new Set(Array.from(dynamicControls.querySelectorAll('.locked-control')).map(row => row.dataset.requiredId));
+  (list || []).forEach(cfg => {
+    if (!existingIds.has(cfg.id)) {
+      createControlElement(Object.assign({}, cfg, { locked: true, requiredId: cfg.id }));
+    }
+  });
+}
+
+/* Slider resolution options, shared by every slider-creation dialog */
+const SLIDER_RESOLUTION_FIELD = {
+  key: 'precision', label: 'Resolution', type: 'select', value: '0',
+  options: [
+    { value: '0', label: '0 (whole numbers)' },
+    { value: '1', label: '0.0 (1 decimal)' },
+    { value: '2', label: '0.00 (2 decimals)' },
+  ],
+};
+
+/* Add slider — created directly, no variable dropdown */
+addSliderBtn.addEventListener('click', async () => {
+  const result = await showControlDialog({
+    title: 'Add Slider',
+    submitLabel: 'Add Slider',
+    fields: [
+      { key: 'label', label: 'Label', value: 'SLIDER' },
+      { key: 'min', label: 'Min value', type: 'number', value: '0' },
+      { key: 'max', label: 'Max value', type: 'number', value: '1023' },
+      SLIDER_RESOLUTION_FIELD,
+      { key: 'cmdFormat', label: 'Command format', value: '{value}', hint: 'Use {value} as a placeholder, e.g. {value} or I{value}' },
+    ],
+  });
+  if (!result) return;
+  const label = (result.label || 'SLIDER').trim() || 'SLIDER';
+  const minVal = parseFloat(result.min);
+  const maxVal = parseFloat(result.max);
+  const cmdFormat = (result.cmdFormat || '').trim() || '{value}';
+  createControlElement({
+    type: 'slider',
+    label: label.toUpperCase(),
+    dataKey: label.toLowerCase().replace(/\s+/g, '_'),
+    min: isNaN(minVal) ? 0 : minVal,
+    max: isNaN(maxVal) ? 1023 : maxVal,
+    precision: result.precision,
+    cmdFormat
+  });
+  saveLayoutToStorage();
 });
 
-/* Add button */
-addButtonBtn.addEventListener('click', () => {
-  showVarDropdown('button');
+/* Add button — created directly, no variable dropdown */
+addButtonBtn.addEventListener('click', async () => {
+  const result = await showControlDialog({
+    title: 'Add Button',
+    submitLabel: 'Add Button',
+    fields: [
+      { key: 'label', label: 'Label', value: 'TOGGLE_BUTTON' },
+      { key: 'onCmd', label: 'ON command', value: '1' },
+      { key: 'offCmd', label: 'OFF command', value: '0' },
+    ],
+  });
+  if (!result) return;
+  const label = (result.label || 'TOGGLE_BUTTON').trim() || 'TOGGLE_BUTTON';
+  createControlElement({ type: 'button', label, onCmd: result.onCmd || '', offCmd: result.offCmd || '' });
+  saveLayoutToStorage();
 });
 
-/* Add readout */
-addReadoutBtn.addEventListener('click', () => {
+/* Add readout — only this one shows the variable dropdown */
+addReadoutBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
   showVarDropdown('readout');
 });
 
-/* Save / Load layout (localStorage) */
-saveLayoutBtn.addEventListener('click', () => {
-  const rows = document.querySelectorAll('#dynamicControls .control-row');
+// Auto-save layout to localStorage on every change
+function saveLayoutToStorage() {
+  if (!sessionKey) return;
+  const rows = document.querySelectorAll('#dynamicControls .control-row:not(.locked-control)');
   const arr = [];
+  const seen = new Set(); // Track unique controls
+  
   rows.forEach(r => {
     if(r.querySelector('input[type="range"]')) {
-      const label = r.querySelector('div').innerText;
-      const sel = r.querySelector('select');
-      arr.push({type:'slider', label, dataKey: sel ? sel.value : '', min: r.querySelector('input[type="range"]').min, max: r.querySelector('input[type="range"]').max});
+      const labelDiv = r.querySelector('div');
+      const label = labelDiv ? labelDiv.innerText : '';
+      const sliderEl = r.querySelector('input[type="range"]');
+      const dataKey = sliderEl.getAttribute('data-key') || '';
+      const cmdFormat = sliderEl.getAttribute('data-cmd-format') || '{value}';
+      const precision = sliderEl.getAttribute('data-precision') || '0';
+      // Skip duplicate controls with same label
+      const key = 'slider:' + label;
+      if (seen.has(key)) return;
+      seen.add(key);
+      arr.push({type:'slider', label: label, dataKey: dataKey, min: sliderEl.min, max: sliderEl.max, cmdFormat: cmdFormat, precision: precision});
     } else if(r.querySelector('button.primary')) {
+      const label = r.querySelector('div').innerText;
+      // Skip duplicate controls with same label
+      const key = 'button:' + label;
+      if (seen.has(key)) return;
+      seen.add(key);
       const sel = r.querySelector('select');
-      arr.push({type:'button', label: r.querySelector('div').innerText, dataKey: sel ? sel.value : ''});
+      const btnEl = r.querySelector('button.primary');
+      const onCmd = btnEl.getAttribute('data-on-cmd');
+      const offCmd = btnEl.getAttribute('data-off-cmd');
+      arr.push({type:'button', label: label, dataKey: sel ? sel.value : '', onCmd: onCmd !== null ? onCmd : undefined, offCmd: offCmd !== null ? offCmd : undefined});
     } else if(r.querySelector('.readout-value')) {
       const key = r.querySelector('.readout-value').getAttribute('data-key');
-      arr.push({type:'readout', dataKey: key});
+      const labelEl = r.querySelector('div');
+      const label = labelEl ? labelEl.innerText : key;
+      // Skip duplicate controls with same label
+      const uniqKey = 'readout:' + label;
+      if (seen.has(uniqKey)) return;
+      seen.add(uniqKey);
+      const unit = r.querySelector('.readout-value').getAttribute('data-unit') || '';
+      const decimals = r.querySelector('.readout-value').getAttribute('data-decimals') || '';
+      const portId = r.querySelector('.readout-value').getAttribute('data-port-id') || '';
+      arr.push({type:'readout', label: label, dataKey: key, unit: unit, decimals: decimals, portId: portId});
     }
   });
-  localStorage.setItem('evl_layout', JSON.stringify(arr));
-  alert('Layout saved locally.');
-});
-loadLayoutBtn.addEventListener('click', () => {
-  const raw = localStorage.getItem('evl_layout'); if(!raw){ alert('No saved layout'); return; }
-  dynamicControls.innerHTML = '';
-  const arr = JSON.parse(raw);
-  arr.forEach(cfg => createControlElement(cfg));
+  // Save with session key prefix
+  localStorage.setItem('evl_layout_' + sessionKey, JSON.stringify(arr));
+}
+
+
+let layoutLoadedThisPage = false;
+
+// Removes only student-added rows, preserving admin-required (locked) controls
+function clearUserControls() {
+  if (!dynamicControls) return;
+  dynamicControls.querySelectorAll('.control-row:not(.locked-control)').forEach(row => row.remove());
+}
+
+// Auto-load layout when sensor data becomes available (after serial connects)
+function loadLayoutWhenReady() {
+  // Prevent loading multiple times in same page
+  if (layoutLoadedThisPage) return;
+  layoutLoadedThisPage = true;
+
+  if (!sessionKey) return;
+
+  // Always clear old controls before loading
+  clearUserControls();
+
+  const raw = localStorage.getItem('evl_layout_' + sessionKey);
+  if(raw) {
+    try {
+      const arr = JSON.parse(raw);
+      if(arr && arr.length > 0) {
+        console.log('[layout] Loading', arr.length, 'controls:', JSON.stringify(arr));
+
+        // Clear any existing controls first
+        clearUserControls();
+
+        arr.forEach(cfg => {
+          createControlElement(cfg);
+        });
+        console.log('[layout] Auto-loaded', arr.length, 'controls for session');
+      }
+    } catch(e) {
+      console.log('[layout] Auto-load error:', e);
+    }
+  }
+}
+
+// Clear layout when session ends
+function clearLayoutOnSessionEnd() {
+  if (sessionKey) {
+    localStorage.removeItem('evl_layout_' + sessionKey);
+    localStorage.removeItem('layoutLoaded_' + sessionKey);
+  }
+}
+
+// Handle page close/refresh - disconnect serial and turn off relay
+window.addEventListener('beforeunload', (e) => {
+  // Try to disconnect every serial slot
+  try {
+    Object.keys(serialSlots).forEach(connId => socket.emit('disconnect_serial', { conn_id: connId }));
+  } catch(e) {}
+
+  // Turn off relay
+  fetch('/toggle_relay', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: 'off', session_key: sessionKey })
+  }).catch(() => {});
 });
 
 /* ----------------- CHART (keeps your existing logic + export) ----------------- */
@@ -772,6 +1255,11 @@ const chartCtx = document.getElementById('mainChart').getContext('2d');
 const visiblePoints = 50;
 const chartBuffer = [];
 let lastChartUpdate = 0;
+// Accumulated across messages (never shrinks except on port switch) so a single
+// payload that's transiently missing/invalid a field — e.g. while a slider-driven
+// value is changing — doesn't make the currently-plotted key look "gone" and
+// trigger a full chart reset. See the sensor_data handler below.
+const knownDataKeys = new Set();
 
 const chart = new Chart(chartCtx, {
   type: 'line',
@@ -796,25 +1284,79 @@ const chart = new Chart(chartCtx, {
   }
 });
 
-function chartLoop(){
-  if(!running){ requestAnimationFrame(chartLoop); return; }
-  const take = chartBuffer.splice(0, 5); // take more points per update
-  if(take.length && Date.now() - lastChartUpdate > 200){ // faster updates for smoother chart
-    const xAxisMode = xAxisFilter.value;
-    take.forEach(v => {
-      if (xAxisMode === 'time') chart.data.labels.push(new Date(v.ts).toLocaleTimeString('en-GB', { hour12: false }));
-      else chart.data.labels.push(v.sampleCount);
-      chart.data.datasets[0].data.push(v.value1 !== null ? v.value1 : NaN);
-      chart.data.datasets[1].data.push(v.value2 !== null ? v.value2 : NaN);
-    });
-    while(chart.data.labels.length > visiblePoints){
-      chart.data.labels.shift(); chart.data.datasets[0].data.shift(); chart.data.datasets[1].data.shift();
-    }
-    chart.update('none');
-    document.getElementById('chartStatus').innerText = `Running — last update: ${new Date().toLocaleTimeString()}`;
-    lastChartUpdate = Date.now();
+// Y/Y1 range eases toward the visible-data target instead of snapping every
+// update, so a slider (e.g. a load control) that shifts the reported value
+// range doesn't look like the chart is resetting/recalibrating.
+//
+// Both min AND max track the data (not just max against a fixed 0
+// baseline) — a series that never comes near zero (e.g. hovering around
+// 500) would otherwise get padded into a thin sliver at the top of an
+// axis stretching all the way down to 0.
+let displayYMin = null, displayYMax = null, displayY1Min = null, displayY1Max = null;
+const AXIS_EASE = 0.15;
+
+function easedAutoRange(values, prevMin, prevMax) {
+  const nums = values.filter(v => typeof v === 'number' && !isNaN(v));
+  if (!nums.length) return prevMin === null ? null : { min: prevMin, max: prevMax };
+  const dataMin = Math.min(...nums), dataMax = Math.max(...nums);
+  const range = dataMax - dataMin;
+  const padding = range > 0 ? range * 0.15 : Math.max(Math.abs(dataMax) * 0.1, 1);
+  const targetMin = dataMin - padding, targetMax = dataMax + padding;
+  if (prevMin === null) return { min: targetMin, max: targetMax };
+  const easedMin = prevMin + (targetMin - prevMin) * AXIS_EASE;
+  const easedMax = prevMax + (targetMax - prevMax) * AXIS_EASE;
+  const settled = Math.abs(targetMin - easedMin) < (Math.abs(targetMin) || 1) * 0.01
+                && Math.abs(targetMax - easedMax) < (Math.abs(targetMax) || 1) * 0.01;
+  return settled ? { min: targetMin, max: targetMax } : { min: easedMin, max: easedMax };
+}
+
+function applyAutoScale() {
+  const r0 = easedAutoRange(chart.data.datasets[0].data, displayYMin, displayYMax);
+  if (r0) {
+    displayYMin = r0.min; displayYMax = r0.max;
+    chart.options.scales.y.min = displayYMin;
+    chart.options.scales.y.max = displayYMax;
   }
-  requestAnimationFrame(chartLoop);
+
+  if (!chart.data.datasets[1].hidden) {
+    const r1 = easedAutoRange(chart.data.datasets[1].data, displayY1Min, displayY1Max);
+    if (r1) {
+      displayY1Min = r1.min; displayY1Max = r1.max;
+      chart.options.scales.y1.min = displayY1Min;
+      chart.options.scales.y1.max = displayY1Max;
+    }
+  } else {
+    displayY1Min = null; displayY1Max = null; // recompute fresh next time Series 2 is enabled
+  }
+}
+
+function chartLoop(){
+  // Wrapped in try/finally so a transient issue (e.g. the page tearing
+  // down its DOM at session end) can't permanently kill this loop by
+  // throwing before the closing requestAnimationFrame call below.
+  try {
+    if(!running){ return; }
+    const take = chartBuffer.splice(0, 5); // take more points per update
+    if(take.length && Date.now() - lastChartUpdate > 200){ // faster updates for smoother chart
+      const xAxisMode = xAxisFilter.value;
+      take.forEach(v => {
+        if (xAxisMode === 'time') chart.data.labels.push(new Date(v.ts).toLocaleTimeString('en-GB', { hour12: false }));
+        else chart.data.labels.push(v.sampleCount);
+        chart.data.datasets[0].data.push(v.value1 !== null ? v.value1 : NaN);
+        chart.data.datasets[1].data.push(v.value2 !== null ? v.value2 : NaN);
+      });
+      while(chart.data.labels.length > visiblePoints){
+        chart.data.labels.shift(); chart.data.datasets[0].data.shift(); chart.data.datasets[1].data.shift();
+      }
+      if (mainIsAutoScaling) applyAutoScale();
+      chart.update('none');
+      const chartStatusEl = document.getElementById('chartStatus');
+      if (chartStatusEl) chartStatusEl.innerText = `Running — last update: ${new Date().toLocaleTimeString()}`;
+      lastChartUpdate = Date.now();
+    }
+  } finally {
+    requestAnimationFrame(chartLoop);
+  }
 }
 requestAnimationFrame(chartLoop);
 
@@ -828,6 +1370,8 @@ function updateChartConfig(){
     chart.data.labels = [];
     chart.data.datasets[0].data = [];
     chart.data.datasets[1].data = [];
+    displayYMin = null; displayYMax = null;
+    displayY1Min = null; displayY1Max = null;
     lastSelectedKey1 = sel1;
   }
   const xAxisMode = xAxisFilter.value;
@@ -850,63 +1394,97 @@ xAxisFilter.addEventListener('change', updateChartConfig);
 yAxisFilter1.addEventListener('change', updateChartConfig);
 yAxisFilter2.addEventListener('change', updateChartConfig);
 
-/* Dynamically populate Y-axis options based on current data */
-function updateYAxisFilterOptions(newKeys){
-  // Convert to Set if it's not already (handles both Set and array)
-  const keySet = newKeys instanceof Set ? newKeys : new Set(newKeys);
-  const keysArray = Array.from(keySet);
+/* Dynamically populate Y-axis options based on current data only */
+function updateYAxisFilterOptions(currentKeys){
+  const cur1 = yAxisFilter1.value;
+  const cur2 = yAxisFilter2.value;
   
   // Check if keys actually changed - don't rebuild if same
+  const newKeysSet = new Set(currentKeys);
   const currentKeysSet = new Set(Array.from(yAxisFilter1.options).map(o => o.value).filter(v => v));
   
   // Check if sets are equal
-  if (keySet.size === currentKeysSet.size && [...keySet].every(k => currentKeysSet.has(k))) {
+  if (newKeysSet.size === currentKeysSet.size && [...newKeysSet].every(k => currentKeysSet.has(k))) {
     // Keys are the same, just update chart config
     updateChartConfig();
     return;
   }
   
-  const cur1 = yAxisFilter1.value;
-  const cur2 = yAxisFilter2.value;
   yAxisFilter1.innerHTML = '';
   yAxisFilter2.innerHTML = '<option value="">(Disabled)</option>';
   
-  // Use ONLY the new keys from current data
-  keysArray.forEach(k => {
+  // Use ONLY current data keys, not accumulated ones
+  currentKeys.forEach(k => {
     const displayLabel = k.split('_').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
     const o1 = document.createElement('option'); o1.value=k; o1.innerText = displayLabel; yAxisFilter1.appendChild(o1);
     const o2 = document.createElement('option'); o2.value=k; o2.innerText = displayLabel; yAxisFilter2.appendChild(o2);
   });
   
-  // Keep current selection if valid, otherwise use first available from new keys
-  let defaultKey1 = cur1 && keySet.has(cur1) ? cur1 : (keysArray.length > 0 ? keysArray[0] : '');
+  // Keep current selection if valid, otherwise use first two available
+  let defaultKey1 = cur1 && currentKeys.includes(cur1) ? cur1 : (currentKeys.length > 0 ? currentKeys[0] : '');
   yAxisFilter1.value = defaultKey1;
-  let defaultKey2 = cur2 && keySet.has(cur2) ? cur2 : (keysArray.length > 1 ? keysArray[1] : '');
+  let defaultKey2 = cur2 && currentKeys.includes(cur2) ? cur2 : (currentKeys.length > 1 ? currentKeys[1] : '');
   yAxisFilter2.value = defaultKey2;
   updateChartConfig(); 
 }
 
 /* ----------------- SENSOR DATA handling ----------------- */
-socket.on('sensor_data', (payload) => {
-  if (!payload) return;
+// Server now tags every emission with the originating conn_id: { conn_id, port, data }.
+socket.on('sensor_data', (msg) => {
+  if (!msg) return;
+  const conn_id = msg.conn_id;
+  const payload = (msg.data && typeof msg.data === 'object') ? msg.data : msg; // tolerate a legacy flat payload
+
+  // Update readouts bound to this port (or unbound "any port" readouts) regardless of
+  // which port the plotter is currently showing — e.g. a teacher-only readout keeps
+  // updating even while the student is plotting the other board.
+  document.querySelectorAll('.readout-value').forEach(readout => {
+    const boundPort = readout.getAttribute('data-port-id');
+    if (boundPort && conn_id && boundPort !== conn_id) return; // this message isn't for this readout's port
+
+    const dataKey = readout.getAttribute('data-key');
+    if (!dataKey) {
+      readout.innerText = '--';
+      return;
+    }
+    let rawV = payload[dataKey];
+    if (rawV === undefined) rawV = payload[dataKey.toLowerCase()];
+    if (rawV === undefined) rawV = payload[dataKey.toUpperCase()];
+    if (rawV !== undefined && !isNaN(Number(rawV))) {
+      const value = Number(rawV);
+      const decimals = parseInt(readout.getAttribute('data-decimals')) || 2;
+      readout.innerText = value.toFixed(decimals);
+    } else {
+      readout.innerText = '--';
+    }
+  });
+
+  // Everything below feeds the chart/plotter, which only shows one port at a time.
+  const selectedPort = chartPortSelect ? chartPortSelect.value : '';
+  if (selectedPort && conn_id && selectedPort !== conn_id) return;
+
   sampleCount++;
 
-  // Get available numeric keys from CURRENT data only
-  const numericKeys = new Set(Object.keys(payload).filter(k =>
+  // Auto-load saved layout after first sensor data arrives
+  loadLayoutWhenReady();
+
+  // Get numeric keys present in this message, then fold them into the
+  // accumulated set — a field missing from one message (e.g. mid-glitch,
+  // or while a slider-driven value is changing) shouldn't make it vanish
+  // from the dropdown and force a re-selection + chart reset.
+  const numericKeys = Object.keys(payload).filter(k =>
     payload[k] !== null && payload[k] !== undefined &&
     !isNaN(Number(payload[k]))
-  ).map(k => k.toLowerCase()));
+  ).map(k => k.toLowerCase());
+  numericKeys.forEach(k => knownDataKeys.add(k));
 
-  // Update dropdown options with current data keys
-  updateYAxisFilterOptions(numericKeys);
+  // Update dropdown with the accumulated key set
+  updateYAxisFilterOptions(Array.from(knownDataKeys));
 
-  // Auto-create slider items in varDropdown for new variables (keep for sliders)
-  autoCreateSlidersFromSensors(Array.from(numericKeys));
-
-  // Also accumulate for slider controls (but not for dropdown)
-  numericKeys.forEach(k => {
-    if(!knownSensorKeys.has(k)) knownSensorKeys.add(k);
-  });
+  // If dropdown is open, refresh it with new keys
+  if(varDropdown.style.display === 'block'){
+    showVarDropdown();
+  }
 
   // Auto-select axes immediately if empty
   let axesChanged = false;
@@ -924,13 +1502,40 @@ socket.on('sensor_data', (payload) => {
     updateChartConfig();
   }
 
-  // Get values for selected axes
+  // Get values for selected axes with spike filtering
   const key1 = yAxisFilter1.value;
   const key2 = yAxisFilter2.value;
-  const val1 = key1 && payload[key1] !== undefined ? Number(payload[key1]) :
+
+  // Get last values from buffer for spike detection
+  const lastEntry = chartBuffer[chartBuffer.length - 1];
+  const lastVal1 = lastEntry ? lastEntry.value1 : null;
+  const lastVal2 = lastEntry ? lastEntry.value2 : null;
+
+  // Max allowed spike ratio (10x - anything larger is likely a glitch)
+  const MAX_SPIKE_RATIO = 10;
+
+  // Helper to filter spikes
+  function filterSpike(newVal, lastVal) {
+    if (newVal === null || newVal === undefined) return null;
+    if (lastVal === null || lastVal === undefined) return newVal;
+    if (lastVal === 0) return newVal;
+    const ratio = newVal / Math.abs(lastVal);
+    // Allow if ratio is reasonable OR if the absolute difference is small (< 10)
+    if (ratio <= MAX_SPIKE_RATIO || Math.abs(newVal - lastVal) < 10) {
+      return newVal;
+    }
+    // Likely a spike - return last valid value
+    console.log('[chart] Filtered spike:', newVal, 'last:', lastVal);
+    return lastVal;
+  }
+
+  const rawVal1 = key1 && payload[key1] !== undefined ? Number(payload[key1]) :
                key1 && payload[key1.toLowerCase()] !== undefined ? Number(payload[key1.toLowerCase()]) : null;
-  const val2 = key2 && payload[key2] !== undefined ? Number(payload[key2]) :
+  const rawVal2 = key2 && payload[key2] !== undefined ? Number(payload[key2]) :
                key2 && payload[key2.toLowerCase()] !== undefined ? Number(payload[key2.toLowerCase()]) : null;
+
+  const val1 = filterSpike(rawVal1, lastVal1);
+  const val2 = filterSpike(rawVal2, lastVal2);
 
   // Add to chart buffer if we have data
   if (val1 !== null || val2 !== null) {
@@ -941,24 +1546,18 @@ socket.on('sensor_data', (payload) => {
       value2: val2
     });
   }
-
-  // Update readouts efficiently
-  document.querySelectorAll('.readout-value').forEach(readout => {
-    const dataKey = readout.getAttribute('data-key');
-    if (!dataKey) return;
-
-    const rawV = payload[dataKey] !== undefined ? payload[dataKey] :
-                 payload[dataKey.toLowerCase()] !== undefined ? payload[dataKey.toLowerCase()] : undefined;
-
-    if(rawV !== undefined && !isNaN(Number(rawV))){
-      const value = Number(rawV);
-      const decimals = parseInt(readout.getAttribute('data-decimals')) || 2;
-      readout.innerText = value.toFixed(decimals);
-    } else {
-      readout.innerText = '--';
-    }
-  });
 });
+
+// Switching the plotter's port: drop stale keys/data from the previous port.
+if (chartPortSelect) {
+  chartPortSelect.addEventListener('change', () => {
+    chartBuffer.length = 0;
+    knownDataKeys.clear();
+    yAxisFilter1.value = '';
+    yAxisFilter2.value = '';
+    updateYAxisFilterOptions([]);
+  });
+}
 
 /* ----------------- fallback helper: convert snake/case and manage dropdowns ----------------- */
 function normalizeKey(k){ return String(k).trim().toLowerCase(); }
@@ -975,18 +1574,32 @@ function autoCreateSlidersFromSensors(payloadKeys){
       const item = document.createElement('div');
       item.className = 'item';
       item.innerText = nk;
-      item.onclick = () => {
+      item.onclick = async () => {
         // When clicked, default action is to create a slider for that variable
-        const minVal = parseInt(prompt(`Enter MIN value for ${nk}:`, '0'));
-        const maxVal = parseInt(prompt(`Enter MAX value for ${nk}:`, '1023'));
+        const result = await showControlDialog({
+          title: `Add Slider for "${nk}"`,
+          submitLabel: 'Add Slider',
+          fields: [
+            { key: 'min', label: 'Min value', type: 'number', value: '0' },
+            { key: 'max', label: 'Max value', type: 'number', value: '1023' },
+            SLIDER_RESOLUTION_FIELD,
+            { key: 'cmdFormat', label: 'Command format', value: '{value}', hint: 'Use {value} as a placeholder, e.g. {value} or I{value}' },
+          ],
+        });
+        if (!result) return;
+        const minVal = parseFloat(result.min);
+        const maxVal = parseFloat(result.max);
+        const cmdFormat = (result.cmdFormat || '').trim() || '{value}';
         createControlElement({
           type: 'slider',
           label: nk.toUpperCase(),
           min: isNaN(minVal) ? 0 : minVal,
           max: isNaN(maxVal) ? 1023 : maxVal,
           dataKey: nk,
-          cmdTemplate: `{key}:{value}`
+          precision: result.precision,
+          cmdFormat
         });
+        saveLayoutToStorage();
         // visually dim this item so user doesn't create same slider repeatedly
         item.style.opacity = 0.4; item.style.pointerEvents = 'none';
         hideVarDropdown();
@@ -996,13 +1609,12 @@ function autoCreateSlidersFromSensors(payloadKeys){
   });
 }
 
-/* ----------------- varDropdown show/hide and mode handling ----------------- */
-let varDropdownMode = 'slider'; // slider/button/readout
+/* ----------------- varDropdown show/hide (readout variable picker only) ----------------- */
 function showVarDropdown(mode){
-  varDropdownMode = mode || 'slider';
-  // rebuild dropdown items from knownSensorKeys to include freshest keys
+  // rebuild dropdown items from CURRENT sensor keys
   varDropdown.innerHTML = '';
-  const keys = Array.from(knownSensorKeys);
+  const currentKeys = Array.from(yAxisFilter1.options).map(o => o.value).filter(v => v);
+  const keys = currentKeys;
   if(keys.length === 0){
     const info = document.createElement('div'); info.className='item'; info.innerText='(no variables yet)'; varDropdown.appendChild(info);
   } else {
@@ -1010,19 +1622,23 @@ function showVarDropdown(mode){
       const item = document.createElement('div');
       item.className = 'item';
       item.innerText = k;
-      item.onclick = () => {
-        if(varDropdownMode === 'slider'){
-          const minVal = parseInt(prompt(`Enter MIN value for ${k}:`, '0'));
-          const maxVal = parseInt(prompt(`Enter MAX value for ${k}:`, '1023'));
-          createControlElement({ type:'slider', label: k.toUpperCase(), dataKey: k, min: isNaN(minVal)?0:minVal, max: isNaN(maxVal)?1023:maxVal, cmdTemplate:`{key}:{value}` });
-        } else if(varDropdownMode === 'button'){
-          const label = prompt('Button label (display):', `TOGGLE_BUTTON`) || `TOGGLE_BUTTON`;
-
-          createControlElement({ type:'button', label, dataKey: k, cmdOn: `${k}:1`, cmdOff: `${k}:0` });
-        } else if(varDropdownMode === 'readout'){
-          const label = prompt('Readout label (display):', k) || k;
-          createControlElement({ type:'readout', label, dataKey: k, unit: '', decimals: 1 });
-        }
+      item.onclick = async () => {
+        const result = await showControlDialog({
+          title: `Add Readout for "${k}"`,
+          submitLabel: 'Add Readout',
+          fields: [
+            { key: 'label', label: 'Label', value: k },
+            { key: 'unit', label: 'Unit (optional, LaTeX)', value: '', placeholder: 'e.g. V, A, ^\\circ\\text{C}' },
+            { key: 'decimals', label: 'Decimal places', type: 'number', step: '1', value: '1' },
+          ],
+        });
+        if (!result) return;
+        const label = (result.label || k).trim() || k;
+        const decimals = parseInt(result.decimals);
+        // Bind to whichever port is currently plotted, so the readout tracks the same board.
+        const portId = chartPortSelect ? chartPortSelect.value : '';
+        createControlElement({ type:'readout', label, dataKey: k, unit: result.unit || '', decimals: isNaN(decimals) ? 1 : decimals, portId });
+        saveLayoutToStorage();
         hideVarDropdown();
       };
       varDropdown.appendChild(item);
@@ -1032,17 +1648,9 @@ function showVarDropdown(mode){
 }
 function hideVarDropdown(){ varDropdown.style.display = 'none'; }
 document.addEventListener('click', (e) => {
-  if(!e.target.closest('#addSlider') && !e.target.closest('#varDropdown') && !e.target.closest('#addButton') && !e.target.closest('#addReadout')) {
+  if(!e.target.closest('#addReadout') && !e.target.closest('#varDropdown')) {
     hideVarDropdown();
   }
-});
-document.getElementById('addSlider').addEventListener('click', (e) => { e.stopPropagation(); showVarDropdown('slider'); });
-document.getElementById('addButton').addEventListener('click', (e) => { e.stopPropagation(); showVarDropdown('button'); });
-document.getElementById('addReadout').addEventListener('click', (e) => { e.stopPropagation(); showVarDropdown('readout'); });
-
-/* ----------------- fallback: parse feedback into sensor_data when server doesn't emit sensor_data */
-socket.on('feedback', (line) => {
-  // handled above — this second listener remains compatible; nothing to add here.
 });
 
 // Waveform config removed as per user request
@@ -1073,40 +1681,129 @@ exportCSVBtn.addEventListener('click', () => {
 
 
 /* ----------------- Socket / connection logging ----------------- */
-socket.on('connect', () => { socketConnected = true; feedbackAdd('Socket connected'); requestPorts(); });
-socket.on('disconnect', (reason) => { socketConnected = false; feedbackAdd('Socket disconnected: ' + (reason||'unknown')); });
-socket.on('connect_error', (err) => { feedbackAdd('Socket connect error: ' + String(err)); });
+socket.on('connect', () => { socketConnected = true; console.log('Socket connected'); requestPorts(); });
+socket.on('disconnect', (reason) => { socketConnected = false; console.log('Socket disconnected: ' + (reason||'unknown')); });
+socket.on('connect_error', (err) => { console.log('Socket connect error: ' + String(err)); });
+
+/* ----------------- Real-time board type update from Admin Pi ----------------- */
+socket.on('board_type_updated', (data) => {
+  if (data && data.board_type) {
+    const boardTypeSelect = document.getElementById('boardType');
+    if (boardTypeSelect) {
+      boardTypeSelect.value = data.board_type;
+      console.log('[board] Board type updated to: ' + data.board_type);
+    }
+  }
+});
+
+// Initialize board type from server on page load
+(function() {
+  if (boardTypeFromServer && boardTypeFromServer !== 'arduino') {
+    const boardTypeSelect = document.getElementById('boardType');
+    if (boardTypeSelect) {
+      boardTypeSelect.value = boardTypeFromServer;
+      console.log('[Board] Initialized to:', boardTypeFromServer);
+    }
+  }
+})();
+
+/* ----------------- Admin-configured UI controls ----------------- */
+function applyUiConfig(cfg) {
+  if (!cfg) return;
+  currentUiConfig = cfg;
+  const controls = cfg.controls || {};
+  const setDisabled = (el, disabled) => {
+    if (!el) return;
+    el.disabled = !!disabled;
+    el.classList.toggle('admin-disabled', !!disabled);
+    el.title = disabled ? 'Disabled by lab administrator' : '';
+  };
+  setDisabled(document.getElementById('boardType'), !controls.board_select);
+  setDisabled(document.getElementById('flashBtn'), !controls.flash_firmware);
+  setDisabled(document.getElementById('firmwareInput'), !controls.flash_firmware);
+  document.querySelectorAll('.slot-connect').forEach(btn => setDisabled(btn, !controls.serial_connect));
+  document.querySelectorAll('.slot-reset').forEach(btn => setDisabled(btn, !controls.serial_connect));
+  setDisabled(document.getElementById('factoryResetBtn'), !controls.factory_reset);
+  setDisabled(document.getElementById('powerSupplyBtn'), !controls.power_supply);
+  setDisabled(document.getElementById('addSlider'), !controls.student_controls_addition);
+  setDisabled(document.getElementById('addButton'), !controls.student_controls_addition);
+  setDisabled(document.getElementById('addReadout'), !controls.student_controls_addition);
+
+  const nameCenterEl = document.getElementById('experimentNameCenter');
+  if (nameCenterEl) {
+    nameCenterEl.innerText = cfg.experiment_name || '';
+    nameCenterEl.style.display = cfg.experiment_name ? '' : 'none';
+  }
+
+  const serialMonitorCard = document.getElementById('serialMonitorCard');
+  if (serialMonitorCard) serialMonitorCard.style.display = controls.serial_monitor_section ? '' : 'none';
+
+  const chartCard = document.getElementById('chartCard');
+  if (chartCard) chartCard.style.display = (controls.serial_plotter || controls.oscilloscope) ? '' : 'none';
+
+  const modeSelect = document.getElementById('mainUiMode');
+  if (modeSelect) {
+    const plotterOpt = modeSelect.querySelector('option[value="plotter"]');
+    const oscOpt = modeSelect.querySelector('option[value="oscilloscope"]');
+    if (plotterOpt) plotterOpt.disabled = !controls.serial_plotter;
+    if (oscOpt) oscOpt.disabled = !controls.oscilloscope;
+    if (!controls.serial_plotter && modeSelect.value === 'plotter' && controls.oscilloscope) {
+      modeSelect.value = 'oscilloscope';
+      updateModeVisibility();
+    } else if (!controls.oscilloscope && modeSelect.value === 'oscilloscope' && controls.serial_plotter) {
+      modeSelect.value = 'plotter';
+      updateModeVisibility();
+    }
+  }
+
+  const dcCard = document.getElementById('dynamicControlsCard');
+  if (dcCard && cfg.defaults) dcCard.style.display = cfg.defaults.dynamic_controls_visible ? '' : 'none';
+
+  renderRequiredControls(cfg.required_controls || []);
+}
+
+applyUiConfig(uiConfigFromServer);
+socket.on('ui_config_updated', applyUiConfig);
 
 /* ----------------- Expand chart (open in new tab) ----------------- */
 document.getElementById('expandChartBtn').addEventListener('click', () => {
-  const win = window.open('/chart?key=' + sessionKey, '_blank');
+  if (!sessionKey) {
+    alert('No active session - please start a session first');
+    return;
+  }
+  const mode = document.getElementById('mainUiMode').value;
+  let url = '';
+  if (mode === 'oscilloscope') {
+    url = `/oscilloscope?key=${sessionKey}`;
+  } else {
+    url = `/newchart?key=${sessionKey}`;
+  }
+  const win = window.open(url, '_blank');
   if (win) openedWindows.push(win);
-});
-
-/* ----------------- Open oscilloscope (new tab) ----------------- */
-document.getElementById('openOscilloscopeBtn').addEventListener('click', () => {
-  const win = window.open('/oscilloscope?key=' + sessionKey, '_blank');
-  if (win) openedWindows.push(win);
+  if (!win) alert('Popup blocked - please allow popups');
 });
 
 /* ----------------- Expand video (open in new tab) ----------------- */
 document.getElementById('expandVideoBtn').addEventListener('click', () => {
+  if (!sessionKey) {
+    alert('No active session - please start a session first');
+    return;
+  }
   const win = window.open('/camera?key=' + sessionKey, '_blank');
   if (win) openedWindows.push(win);
+  if (!win) alert('Popup blocked - please allow popups');
 });
 
 /* ----------------- Pause chart ----------------- */
 pauseChartBtn.addEventListener('click', () => { running = !running; pauseChartBtn.innerText = running ? 'Pause Chart' : 'Resume Chart'; });
 
-/* Try load saved layout on start (non-blocking) */
-window.addEventListener('load', () => {
-  // Set video feed dynamically
-  document.getElementById('videoFeed').src = videoUrl;
-  
-  const raw = localStorage.getItem('evl_layout'); if(raw){ try{ const arr = JSON.parse(raw); dynamicControls.innerHTML=''; arr.forEach(cfg=>createControlElement(cfg)); }catch(e){} }
-});
-
+/* Video feed toggle */
 const videoFeed = document.getElementById('videoFeed');
+// Set video source dynamically on page load
+if (videoFeed) {
+  videoFeed.src = videoUrl;
+  console.log('Video URL set:', videoUrl);
+}
 const toggleVideoBtn = document.getElementById('toggleVideo');
 toggleVideoBtn.addEventListener('click', () => {
   if(videoFeed.style.display === 'none'){
@@ -1195,7 +1892,7 @@ if (toggleAudioBtn) {
       startAudio();
     }
   });
-}
+};
 
 /* ----------------- Video Zoom Controls ----------------- */
 const videoContainer = document.querySelector('.video-container');
@@ -1312,9 +2009,23 @@ let mainIsAutoScaling = true;
 
 function mainUpdateScaling() {
   if (mainIsAutoScaling) {
+    // Wheel/pinch zoom (chartjs-plugin-zoom) writes its own min/max directly
+    // onto chart.options.scales.{y,y1} to reflect the zoomed view. resetZoom()
+    // clears that back to the chart's original config before applyAutoScale
+    // (called every chartLoop tick) takes over min/max again from the data.
+    chart.resetZoom();
+    displayYMin = null; displayYMax = null;
+    displayY1Min = null; displayY1Max = null;
+    delete chart.options.scales.y.min;
     delete chart.options.scales.y.max;
+    delete chart.options.scales.y1.min;
     delete chart.options.scales.y1.max;
   } else {
+    // Manual mode is a fixed 0-baseline gauge (user sets the ceiling only).
+    // Explicitly pin min back to 0 -- Auto mode's applyAutoScale may have
+    // left a non-zero min on these scales from the last fit.
+    chart.options.scales.y.min = 0;
+    chart.options.scales.y1.min = 0;
     chart.options.scales.y.max = Number(document.getElementById('mainY1Max').value);
     chart.options.scales.y1.max = Number(document.getElementById('mainY2Max').value);
   }
@@ -1386,10 +2097,11 @@ powerSavePopup.innerHTML = `
 document.body.appendChild(powerSavePopup);
 
 if (!sessionKey) {
-  document.body.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100vh; background:#1c1c2b; color:#e0e0e0; font-size:2em;">Invalid Session. Please book a slot from the homepage.<br><br><span style="font-size:0.5em;">Redirecting...</span></div><button onclick="window.location.href=\'/\'" style="padding:10px 20px; background:#00f0ff; color:#041726; border:none; border-radius:6px; font-weight:700;">Go to Homepage</button>';
+  document.body.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100vh; background:#1c1c2b; color:#e0e0e0; font-size:2em;">Invalid Session. Please book a slot from My Bookings.<br><br><span style="font-size:0.5em;">Redirecting...</span></div><button onclick="window.location.href=\'' + BOOKING_PAGE_URL + '\'" style="padding:10px 20px; background:#00f0ff; color:#041726; border:none; border-radius:6px; font-weight:700;">Go to My Bookings</button>';
   // Auto-redirect after 2 seconds
   setTimeout(function() {
-    window.location.href = '/';
+    clearLayoutOnSessionEnd();
+    window.location.href = BOOKING_PAGE_URL;
   }, 2000);
 } else {
   // Check if session is already completed
@@ -1423,22 +2135,23 @@ if (!sessionKey) {
       document.getElementById('timer').innerText = `Time Left: ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
       if (remaining <= 0) {
-        // Session ended - show message and redirect to homepage
+        // Session ended - disconnect serial and show overlay
         localStorage.setItem('sessionStatus_' + sessionKey, 'COMPLETED');
         document.getElementById('sessionClosed').style.display = 'flex';
         document.querySelector('.container').style.display = 'none';
         document.querySelector('.header-bar').style.display = 'none';
 
-        // Update the Go to Homepage button to auto-redirect
+        // Disconnect serial port if connected
+        try {
+          socket.emit('disconnect_serial');
+          console.log('[session] Session ended - serial disconnected');
+        } catch(e) { console.log('Serial disconnect error:', e); }
+
+        // Update button to show redirect message
         const homeBtn = document.querySelector('#sessionClosed button');
         if (homeBtn) {
-            homeBtn.innerText = 'Redirecting to Homepage...';
+            homeBtn.innerText = 'Redirecting...';
         }
-
-        // Auto-redirect to homepage after 2 seconds
-        setTimeout(() => {
-            window.location.href = '/';
-        }, 2000);
 
         // Send request to server to remove session and turn off relay
         fetch('/remove_session', {
@@ -1446,6 +2159,12 @@ if (!sessionKey) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ session_key: sessionKey })
         });
+
+        // Auto-redirect to My Bookings after 2 seconds
+        setTimeout(() => {
+          clearLayoutOnSessionEnd();
+          window.location.href = BOOKING_PAGE_URL;
+        }, 2000);
       } else {
         setTimeout(updateTimer, 1000);
       }

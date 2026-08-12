@@ -400,6 +400,38 @@ def get_session_lab_pi_url(session_key):
     return f"http://{lab_pi.ip_address}:10000"
 
 
+# Safe fallback if the Lab Pi's /api/ui-config can't be reached — controls
+# default to empty (Jinja reads e.g. ui_config.controls.board_select as
+# Undefined/falsy), so a fetch failure hides/disables controls rather than
+# rendering them as if nothing were restricted.
+FALLBACK_UI_CONFIG = {
+    'controls': {},
+    'defaults': {'main_view': 'plotter', 'dynamic_controls_visible': False,
+                 'serial_plotter_allow_port_switch': False, 'serial_plotter_default_port_id': ''},
+    'required_controls': [],
+    'serial_ports': [],
+    'experiment_name': None,
+}
+
+
+def get_lab_pi_ui_config(lab_pi_url):
+    """The Lab Pi's admin-configured UI restrictions — which boards/controls
+    are enabled, serial port profiles, required controls — fetched fresh on
+    every /experiment load so an admin change to the Lab Pi's own settings
+    takes effect on the very next session, not just the next Master deploy."""
+    try:
+        response = requests.get(
+            f"{lab_pi_url}/api/ui-config",
+            headers={'X-Master-Api-Key': MASTER_API_KEY},
+            timeout=5,
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"[EXPERIMENT] Could not fetch ui-config from {lab_pi_url}: {e}")
+        return FALLBACK_UI_CONFIG
+
+
 def end_lab_pi_session(session_key, lab_pi_url=None):
     """Tell the Lab Pi actually running this session that it's over — it
     clears its own active_sessions entry and turns its relay off — and tear
@@ -2505,8 +2537,13 @@ def experiment():
         
         # Calculate session duration from booking
         session_duration_minutes = (booking.end_time - booking.start_time).total_seconds() // 60
-        # Use UTC time for consistency with JavaScript Date.now()
-        session_start = datetime.utcnow()
+        # Naive local time, matching booking.start_time/end_time (parsed from the
+        # booking form as local wall-clock time, not UTC) and the session-expiry
+        # monitor (which compares Session.end_time against datetime.now(), also
+        # local). Using utcnow() here — a naive value read back as if it *were*
+        # local — made every session appear to have expired hours in the past
+        # the instant it was created, on any server not set to UTC.
+        session_start = datetime.now()
         session_end = session_start + timedelta(minutes=session_duration_minutes)
         
         print(f"[Session] Creating session: duration={session_duration_minutes} min, start={session_start}, end={session_end}")
@@ -2614,6 +2651,8 @@ def experiment():
 
     print(f"[Experiment] Session end time: {session_end_time}, booking end_time: {session.end_time}, duration: {duration}")
 
+    ui_config = get_lab_pi_ui_config(lab_pi_url)
+
     # Always render the Master's own page — never redirect the browser to
     # the Lab Pi's address. Its JS talks back to Master routes/sockets only,
     # which proxy through to lab_pi_url server-side.
@@ -2623,7 +2662,9 @@ def experiment():
         session_key=session_key,
         lab_pi_id=lab_pi.lab_pi_id,
         board_type=board_type,
-        experiment_name=exp_name
+        experiment_name=exp_name,
+        ui_config=ui_config,
+        booking_page_url=url_for('my_bookings'),
     )
 
 @app.route('/add_session', methods=['POST'])

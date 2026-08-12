@@ -34,16 +34,6 @@ RELAYED_EVENTS = [
     'ui_config_updated',
 ]
 
-# These two carry a conn_id/port wrapper on the wire (Lab Pi supports multiple
-# simultaneous serial connections per session) but the current Master-side
-# page only has a single primary connection slot, so unwrap them to the shape
-# it already expects instead of rewriting the page's JS to be conn_id-aware.
-_UNWRAP = {
-    'feedback': lambda data: (data or {}).get('text', ''),
-    'sensor_data': lambda data: (data or {}).get('data', {}),
-}
-
-
 class LabPiRelayManager:
     def __init__(self, socketio_server, master_api_key):
         self.socketio = socketio_server
@@ -78,12 +68,12 @@ class LabPiRelayManager:
             return client
 
     def _register_relay_handlers(self, client, session_key):
+        # Straight passthrough — the Master's page is now the same conn_id/
+        # port-aware template the Lab Pi itself renders, so the wire format
+        # it expects is exactly what the Lab Pi already sends.
         for event_name in RELAYED_EVENTS:
-            unwrap = _UNWRAP.get(event_name)
-
-            def handler(data=None, _event=event_name, _unwrap=unwrap):
-                payload = _unwrap(data) if _unwrap else data
-                self.socketio.emit(_event, payload, room=session_key)
+            def handler(data=None, _event=event_name):
+                self.socketio.emit(_event, data, room=session_key)
 
             client.on(event_name, handler)
 
