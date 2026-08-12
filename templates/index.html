@@ -183,6 +183,7 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
     <div class="card" id="chartCard">
       <h3>Real-time Sensor Data Chart 📈</h3>
       <button class="zoom-btn expand" id="expandChartBtn" title="Open Chart in New Tab">[ ]</button>
+      <button id="openOscilloscopeBtn" class="zoom-btn" style="right:180px" title="Open Oscilloscope">CRO</button>
       <button id="chartZoomReset" class="zoom-btn reset" title="Reset Zoom">■</button>
       <button id="chartZoomOut" class="zoom-btn minus" title="Zoom Out">-</button>
       <button id="chartZoomIn" class="zoom-btn" title="Zoom In">+</button>
@@ -250,22 +251,37 @@ console.log('[DEBUG] Date.now():', Date.now());
 </script>
 
 <script>
-// Dynamic host configuration - automatically detects IP and ports
-const BASE_URL = window.location.origin;  // e.g., http://192.168.1.100:5000
-const VIDEO_PORT = 8080;  // Camera stream port - change if different
-const AUDIO_PORT = 9000;  // Audio server port - change if different
+// This page is served BY the Master PC, and everything it talks to (fetch
+// calls, the socket below, the camera feed) is a Master route too — the
+// Master proxies through to whichever Lab Pi is running this session. This
+// page never addresses a Lab Pi directly. See MASTER_UI_MIGRATION_PLAN.md.
+const BASE_URL = window.location.origin;  // e.g., http://master-host:5000
 
-// Video stream URL - uses same host as current page but different port for camera
-const videoUrl = `${window.location.protocol}//${window.location.hostname}:${VIDEO_PORT}/?action=stream&resolution=1920x1080&quality=100`;
+/* ----------------- SESSION MANAGEMENT ----------------- */
+// Parsed before the socket connects below, since the session_key has to go
+// on the connection itself (a plain io.connect() doesn't inherit this
+// page's querystring for free).
+const urlParams = new URLSearchParams(window.location.search);
+const sessionKey = urlParams.get('key');
+let openedWindows = []; // Track opened windows for cleanup
 
-// Audio server URL - uses same host but audio port
-const audioServerUrl = `${window.location.protocol}//${window.location.hostname}:${AUDIO_PORT}`;
+// Camera stream and audio (WebRTC signaling) are both proxied through the
+// Master — see /session/<key>/camera-stream and /session/<key>/audio-offer
+// in remote_lab_admin/app.py, and audio_relay.py for the two-peer-connection
+// relay behind the audio one.
+const videoUrl = `${BASE_URL}/session/${sessionKey}/camera-stream`;
+const audioOfferUrl = `${BASE_URL}/session/${sessionKey}/audio-offer`;
 
-console.log('Video URL:', videoUrl);
-console.log('Audio server URL:', audioServerUrl);
+console.log('Video URL (proxied via Master):', videoUrl);
+console.log('Audio offer URL (proxied via Master):', audioOfferUrl);
 
 /* ----------------- SOCKET.IO ----------------- */
-const socket = io.connect(window.location.origin, { transports: ['websocket', 'polling'] });
+// query.key tells the Master which Lab Pi to relay this connection's events
+// to/from — see the 'connect' handler in remote_lab_admin/app.py.
+const socket = io.connect(window.location.origin, {
+  transports: ['websocket', 'polling'],
+  query: { key: sessionKey },
+});
 
 /* ----------------- UI refs ----------------- */
 const flashBtn = document.getElementById('flashBtn');
@@ -298,11 +314,6 @@ if (serverBoardType) {
 const factoryResetBtn = document.getElementById('factoryResetBtn');
 const viewSopBtn = document.getElementById('viewSopBtn');
 const powerSupplyBtn = document.getElementById('powerSupplyBtn');
-
-/* ----------------- SESSION MANAGEMENT ----------------- */
-const urlParams = new URLSearchParams(window.location.search);
-const sessionKey = urlParams.get('key');
-let openedWindows = []; // Track opened windows for cleanup
 
 /* ----------------- POWER SUPPLY CONTROL ----------------- */
 let powerSupplyState = 'off'; // Initial state is OFF
@@ -398,6 +409,7 @@ if(flashBtn) {
     fd.append('firmware', file);
     fd.append('board', board);
     fd.append('port', port);
+    fd.append('session_key', sessionKey);
     fetch('/flash', { method:'POST', body: fd })
       .then(r => r.json()).then(j => {
         flashStatus.innerText = j.status || 'Flashing started';
@@ -434,7 +446,7 @@ factoryResetBtn.addEventListener('click', async () => {
     const resp = await fetch('/factory_reset', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ board })
+      body: JSON.stringify({ board, session_key: sessionKey })
     });
     const j = await resp.json();
     if(resp.ok){
@@ -1071,6 +1083,12 @@ document.getElementById('expandChartBtn').addEventListener('click', () => {
   if (win) openedWindows.push(win);
 });
 
+/* ----------------- Open oscilloscope (new tab) ----------------- */
+document.getElementById('openOscilloscopeBtn').addEventListener('click', () => {
+  const win = window.open('/oscilloscope?key=' + sessionKey, '_blank');
+  if (win) openedWindows.push(win);
+});
+
 /* ----------------- Expand video (open in new tab) ----------------- */
 document.getElementById('expandVideoBtn').addEventListener('click', () => {
   const win = window.open('/camera?key=' + sessionKey, '_blank');
@@ -1129,8 +1147,7 @@ async function startAudio() {
         const offer = await audioPC.createOffer();
         await audioPC.setLocalDescription(offer);
 
-        // Use dynamic audio server URL
-        const response = await fetch(`${audioServerUrl}/offer`, {
+        const response = await fetch(audioOfferUrl, {
             method: 'POST',
             body: JSON.stringify({
                 sdp: audioPC.localDescription.sdp,

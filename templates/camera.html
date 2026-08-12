@@ -43,19 +43,19 @@ document.getElementById('backBtn').addEventListener('click', () => {
     window.close();
 });
 
-// Dynamic host configuration - automatically detects IP and ports
-const BASE_URL = window.location.origin;  // e.g., http://192.168.1.100:5000
-const VIDEO_PORT = 8080;  // Camera stream port - change if different
-const AUDIO_PORT = 9000;  // Audio server port - change if different
+// This page is served BY the Master PC. The video feed is proxied through
+// a Master route (/session/<key>/camera-stream), never the Lab Pi's own
+// address — see MASTER_UI_MIGRATION_PLAN.md.
+const BASE_URL = window.location.origin;  // e.g., http://master-host:5000
+const sessionKey = new URLSearchParams(window.location.search).get('key');
 
-// Video stream URL - uses same host as current page but different port for camera
-const videoUrl = `${window.location.protocol}//${window.location.hostname}:${VIDEO_PORT}/?action=stream&resolution=1920x1080&quality=100`;
+// Both proxied through the Master — see /session/<key>/camera-stream and
+// /session/<key>/audio-offer in remote_lab_admin/app.py.
+const videoUrl = `${BASE_URL}/session/${sessionKey}/camera-stream`;
+const audioOfferUrl = `${BASE_URL}/session/${sessionKey}/audio-offer`;
 
-// Audio server URL - uses same host but audio port
-const audioServerUrl = `${window.location.protocol}//${window.location.hostname}:${AUDIO_PORT}`;
-
-console.log('Video URL:', videoUrl);
-console.log('Audio server URL:', audioServerUrl);
+console.log('Video URL (proxied via Master):', videoUrl);
+console.log('Audio offer URL (proxied via Master):', audioOfferUrl);
 
 // Set video feed dynamically
 document.getElementById('videoFeed').src = videoUrl;
@@ -86,8 +86,7 @@ async function startAudio() {
         const offer = await audioPC.createOffer();
         await audioPC.setLocalDescription(offer);
 
-        // Use dynamic audio server URL
-        const response = await fetch(`${audioServerUrl}/offer`, {
+        const response = await fetch(audioOfferUrl, {
             method: 'POST',
             body: JSON.stringify({
                 sdp: audioPC.localDescription.sdp,

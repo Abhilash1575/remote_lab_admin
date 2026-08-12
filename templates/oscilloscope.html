@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>High-Speed Oscilloscope - Embedded Virtual Lab</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+html, body { height: 100%; margin: 0; font-family: 'Inter', sans-serif; background: #0a0a12; color: #e0e0e0; overflow: hidden; }
+#CRO_CONTAINER { display: flex; flex-direction: column; height: 100vh; background: #0a0a12; }
+.control-panel { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 16px; background: #14141f; border-bottom: 1px solid #2a2a3a; }
+.control-group { display: flex; gap: 8px; align-items: center; }
+.control-group label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+.osc-button { padding: 6px 12px; border-radius: 4px; border: 1px solid #333; cursor: pointer; background: #1e1e2e; color: #00f0ff; font-size: 12px; font-weight: 600; transition: all 0.15s; }
+.osc-button:hover { background: #2a2a3e; border-color: #00f0ff; }
+.osc-button.active { background: #00f0ff; color: #041726; }
+.osc-select { padding: 6px 10px; border-radius: 4px; border: 1px solid #333; background: #1e1e2e; color: #e0e0e0; font-size: 12px; min-width: 90px; }
+.osc-input { padding: 6px 8px; border-radius: 4px; border: 1px solid #333; background: #1e1e2e; color: #e0e0e0; font-size: 12px; width: 60px; text-align: center; }
+.trigger-indicator { width: 8px; height: 8px; border-radius: 50%; background: #00ff7f; }
+.trigger-indicator.waiting { background: #ffaa00; animation: pulse 0.5s infinite; }
+.trigger-indicator.triggered { background: #00ff7f; box-shadow: 0 0 10px #00ff7f; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.chart-area { flex: 1; position: relative; min-height: 0; }
+.chart-canvas { width: 100%; height: 100%; }
+.status-bar { display: flex; gap: 16px; padding: 8px 16px; background: #14141f; border-top: 1px solid #2a2a3a; font-size: 11px; color: #666; }
+.status-bar .stat { display: flex; align-items: center; gap: 6px; }
+.status-bar .stat-value { color: #00f0ff; font-family: 'Roboto Mono', monospace; }
+</style>
+</head>
+<body>
+<div id="CRO_CONTAINER">
+  <div class="control-panel">
+    <div class="control-group">
+      <h3 style="margin:0; color:#00f0ff; font-size:16px;">STM32 Dual-Channel Oscilloscope</h3>
+    </div>
+
+    <div class="control-group" style="gap:12px;">
+      <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#FFDD00;font-weight:600;"><span style="width:10px;height:10px;border-radius:50%;background:#FFDD00;display:inline-block;"></span>CH1</span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#00FFFF;font-weight:600;"><span style="width:10px;height:10px;border-radius:50%;background:#00FFFF;display:inline-block;"></span>CH2</span>
+    </div>
+
+    <div id="oscControls" style="display:flex; flex-direction:row; gap:12px; align-items:center;">
+      <div class="control-group">
+        <label>Trig Src</label>
+        <select id="oscTrigSrc" class="osc-select">
+          <option value="0">CH1</option>
+          <option value="1">CH2</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Trig V</label>
+        <input type="number" id="oscTrigV" class="osc-input" value="1.65" step="0.05">
+      </div>
+      <div class="control-group">
+        <label>Edge</label>
+        <select id="oscEdge" class="osc-select">
+          <option value="rising">Rising ↑</option>
+          <option value="falling">Falling ↓</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Samples</label>
+        <select id="oscSamples" class="osc-select">
+          <option value="256">256</option>
+          <option value="512">512</option>
+          <option value="1000" selected>1000</option>
+          <option value="2000">2000</option>
+          <option value="4000">4000</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>V-Scale</label>
+        <select id="oscVScale" class="osc-select" style="width:60px;">
+          <option value="0.5">0.5x</option>
+          <option value="1.0" selected>1x</option>
+          <option value="2.0">2x</option>
+          <option value="5.0">5x</option>
+          <option value="10.0">10x</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>V-Pos</label>
+        <input type="range" id="oscVPos" min="-1.5" max="1.5" step="0.1" value="0" style="width:80px;">
+      </div>
+      <div class="control-group">
+        <label>H-Scale</label>
+        <select id="oscHScale" class="osc-select" style="width:60px;">
+          <option value="1.0" selected>1x</option>
+          <option value="2.0">2x</option>
+          <option value="5.0">5x</option>
+          <option value="10.0">10x</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Hyst</label>
+        <input type="number" id="oscHyst" class="osc-input" value="0.15" step="0.01" style="width:50px;">
+      </div>
+      <div class="control-group">
+        <label style="cursor:pointer;"><input type="checkbox" id="oscSmooth"> Smooth</label>
+      </div>
+      <div class="control-group">
+        <button id="oscAutoBtn" class="osc-button">⚡ Auto</button>
+        <button id="oscFreezeBtn" class="osc-button">⏸ Freeze</button>
+      </div>
+      <div class="control-group">
+        <div class="trigger-indicator" id="triggerLed"></div>
+        <span style="font-size:11px;color:#888">TRIG</span>
+      </div>
+    </div>
+
+    <div class="control-group" style="margin-left: auto;">
+      <button id="backBtn" class="osc-button">Back to Lab</button>
+    </div>
+  </div>
+
+  <div class="chart-area">
+    <canvas id="oscCanvas" class="chart-canvas"></canvas>
+  </div>
+
+  <div class="status-bar" style="flex-direction:column; gap:4px;">
+    <div style="display:flex; gap:16px;">
+      <div class="stat">OSC Samples: <span class="stat-value" id="oscSampleCount">0</span></div>
+      <div class="stat" style="color:#FFDD00; font-weight:700;">CH1</div>
+      <div class="stat">Vmin: <span class="stat-value" id="oscMin1">-</span></div>
+      <div class="stat">Vmax: <span class="stat-value" id="oscMax1">-</span></div>
+      <div class="stat">Vpp: <span class="stat-value" id="oscVpp1">-</span></div>
+      <div class="stat">Freq: <span class="stat-value" id="oscFreq1">-</span></div>
+    </div>
+    <div style="display:flex; gap:16px;">
+      <div class="stat" style="color:#00FFFF; font-weight:700;">CH2</div>
+      <div class="stat">Vmin: <span class="stat-value" id="oscMin2">-</span></div>
+      <div class="stat">Vmax: <span class="stat-value" id="oscMax2">-</span></div>
+      <div class="stat">Vpp: <span class="stat-value" id="oscVpp2">-</span></div>
+      <div class="stat">Freq: <span class="stat-value" id="oscFreq2">-</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// This page is opened as /oscilloscope?key=<session_key> — the socket needs
+// that same key on the connection itself so the Master knows which Lab
+// Pi's waveform data to relay here (see remote_lab_admin/app.py's 'connect'
+// handler and lab_pi_relay.py).
+const sessionKey = new URLSearchParams(window.location.search).get('key');
+const socket = io.connect(window.location.origin, {
+  transports: ['websocket', 'polling'],
+  query: { key: sessionKey },
+});
+
+const oscCanvas = document.getElementById('oscCanvas');
+const oscCtx = oscCanvas.getContext('2d');
+let lastOscData = null;
+let isOscFrozen = false;
+
+function resizeOscCanvas() {
+  oscCanvas.width = oscCanvas.clientWidth;
+  oscCanvas.height = oscCanvas.clientHeight;
+}
+window.addEventListener('resize', resizeOscCanvas);
+resizeOscCanvas();
+
+socket.on('osc_data', (data) => {
+  if (isOscFrozen) return;
+  lastOscData = data;
+  updateOscStats(data);
+});
+
+socket.on('osc_settings_sync', (data) => {
+  if (data.trig_v !== undefined) document.getElementById('oscTrigV').value = data.trig_v;
+});
+
+function updateOscStats(data) {
+  document.getElementById('oscSampleCount').textContent = data.ch1.length;
+  document.getElementById('oscMin1').textContent = data.ch1_vmin.toFixed(3) + ' V';
+  document.getElementById('oscMax1').textContent = data.ch1_vmax.toFixed(3) + ' V';
+  document.getElementById('oscVpp1').textContent = data.ch1_vpp.toFixed(3) + ' V';
+  document.getElementById('oscFreq1').textContent = data.ch1_freq ? data.ch1_freq.toFixed(1) + ' Hz' : '-';
+  document.getElementById('oscMin2').textContent = data.ch2_vmin.toFixed(3) + ' V';
+  document.getElementById('oscMax2').textContent = data.ch2_vmax.toFixed(3) + ' V';
+  document.getElementById('oscVpp2').textContent = data.ch2_vpp.toFixed(3) + ' V';
+  document.getElementById('oscFreq2').textContent = data.ch2_freq ? data.ch2_freq.toFixed(1) + ' Hz' : '-';
+
+  const indicator = document.getElementById('triggerLed');
+  if (data.triggered) {
+    indicator.classList.remove('waiting');
+    indicator.classList.add('triggered');
+  } else {
+    indicator.classList.remove('triggered');
+    indicator.classList.add('waiting');
+  }
+}
+
+function drawOscCurve(samples, visibleCount, w, voltToY, color) {
+  oscCtx.strokeStyle = color;
+  oscCtx.lineWidth = 1.5;
+  oscCtx.beginPath();
+  for (let i = 0; i < visibleCount; i++) {
+    const x = (i / (visibleCount - 1)) * w;
+    const y = voltToY(samples[i]);
+    if (i === 0) oscCtx.moveTo(x, y);
+    else oscCtx.lineTo(x, y);
+  }
+  oscCtx.stroke();
+}
+
+function renderOsc() {
+  if (lastOscData) {
+    const { ch1, ch2 } = lastOscData;
+    const w = oscCanvas.width;
+    const h = oscCanvas.height;
+
+    oscCtx.clearRect(0, 0, w, h);
+
+    // Draw Grid
+    oscCtx.strokeStyle = '#3a3a5a';
+    oscCtx.lineWidth = 1;
+    for (let x = 0; x <= w; x += w / 10) {
+      oscCtx.beginPath(); oscCtx.moveTo(x, 0); oscCtx.lineTo(x, h); oscCtx.stroke();
+    }
+    for (let y = 0; y <= h; y += h / 8) {
+      oscCtx.beginPath(); oscCtx.moveTo(0, y); oscCtx.lineTo(w, y); oscCtx.stroke();
+    }
+
+    // Draw Trigger Level
+    const trigV = parseFloat(document.getElementById('oscTrigV').value);
+    const vScale = parseFloat(document.getElementById('oscVScale').value);
+    const vPos = parseFloat(document.getElementById('oscVPos').value);
+    const hScale = parseFloat(document.getElementById('oscHScale').value);
+
+    // Function to map Voltage to Y coordinate with scaling/offset
+    const voltToY = (v) => {
+      // Scale around 1.65V (midpoint) and apply V-Pos
+      const scaledV = (v - 1.65) * vScale + 1.65 + vPos;
+      return h - (scaledV / 3.3) * h;
+    };
+
+    const trigY = voltToY(trigV);
+    oscCtx.strokeStyle = '#ff5555';
+    oscCtx.lineWidth = 1;
+    oscCtx.setLineDash([6, 4]);
+    oscCtx.beginPath(); oscCtx.moveTo(0, trigY); oscCtx.lineTo(w, trigY); oscCtx.stroke();
+    oscCtx.setLineDash([]);
+
+    // Draw 0V Level (1.65V offset)
+    const zeroY = voltToY(1.65);
+    oscCtx.strokeStyle = '#ffff00';
+    oscCtx.lineWidth = 1;
+    oscCtx.setLineDash([4, 4]);
+    oscCtx.beginPath(); oscCtx.moveTo(0, zeroY); oscCtx.lineTo(w, zeroY); oscCtx.stroke();
+    oscCtx.setLineDash([]);
+    oscCtx.fillStyle = '#ffff00';
+    oscCtx.font = '10px monospace';
+    oscCtx.fillText('1.65V (0V)', 10, zeroY - 5);
+
+    // Draw Waveforms — CH1 (yellow), CH2 (cyan)
+    const visibleCount = Math.floor(Math.min(ch1.length, ch2.length) / hScale);
+    drawOscCurve(ch1, visibleCount, w, voltToY, '#FFDD00');
+    drawOscCurve(ch2, visibleCount, w, voltToY, '#00FFFF');
+  }
+  requestAnimationFrame(renderOsc);
+}
+renderOsc();
+
+function syncOscSettings() {
+  socket.emit('update_osc_settings', {
+    trig_v: parseFloat(document.getElementById('oscTrigV').value),
+    trig_src: parseInt(document.getElementById('oscTrigSrc').value),
+    hyst: parseFloat(document.getElementById('oscHyst').value),
+    rising: document.getElementById('oscEdge').value === 'rising',
+    samples: parseInt(document.getElementById('oscSamples').value),
+    smooth: document.getElementById('oscSmooth').checked
+  });
+}
+
+['oscTrigV', 'oscTrigSrc', 'oscHyst', 'oscEdge', 'oscSamples', 'oscSmooth', 'oscVScale', 'oscVPos', 'oscHScale'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', syncOscSettings);
+});
+
+document.getElementById('oscAutoBtn').addEventListener('click', () => socket.emit('osc_auto_level'));
+document.getElementById('oscFreezeBtn').addEventListener('click', () => {
+  isOscFrozen = !isOscFrozen;
+  document.getElementById('oscFreezeBtn').textContent = isOscFrozen ? '▶ Resume' : '⏸ Freeze';
+  document.getElementById('oscFreezeBtn').classList.toggle('active', isOscFrozen);
+  syncOscSettings();
+});
+
+document.getElementById('backBtn').addEventListener('click', () => {
+  window.location.href = '/experiment?key=' + sessionKey;
+});
+</script>
+</body>
+</html>

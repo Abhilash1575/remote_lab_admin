@@ -44,7 +44,14 @@ document.getElementById('backBtn').addEventListener('click', () => {
     window.close();
 });
 
-const socket = io.connect(window.location.origin, { transports: ['websocket', 'polling'] });
+// This page is opened as /chart?key=<session_key> — the socket needs that
+// same key on the connection itself so the Master knows which Lab Pi's
+// data to relay here (see the 'connect' handler in remote_lab_admin/app.py).
+const sessionKey = new URLSearchParams(window.location.search).get('key');
+const socket = io.connect(window.location.origin, {
+  transports: ['websocket', 'polling'],
+  query: { key: sessionKey },
+});
 const xAxisFilter = document.getElementById('xAxisFilter');
 
 xAxisFilter.addEventListener('change', () => {

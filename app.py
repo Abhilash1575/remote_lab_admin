@@ -20,7 +20,7 @@ import io
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from flask import Flask, send_from_directory, request, jsonify, render_template, abort, flash, redirect, url_for, Response, current_app, session
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from flask_mail import Mail, Message
 from flask_limiter import Limiter
@@ -164,6 +164,19 @@ def _verify_lab_pi_request():
     return hmac.compare_digest(provided, MASTER_API_KEY)
 
 socketio = SocketIO(app, async_mode='threading')
+
+from lab_pi_relay import LabPiRelayManager
+lab_pi_relay = LabPiRelayManager(socketio, MASTER_API_KEY)
+
+from audio_relay import AudioRelayManager
+audio_relay = AudioRelayManager()
+
+# Maps a browser's socket.io sid to the session_key it's operating under, so
+# every relayed event (connect_serial, send_command, ...) knows which Lab Pi
+# to forward to without the page having to repeat session_key on every emit.
+sid_session_map = {}
+sid_session_lock = threading.Lock()
+
 limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri='memory://')
 csrf = CSRFProtect(app)
 login_manager = LoginManager(app)
@@ -365,6 +378,51 @@ with app.app_context():
 # Global active sessions for authorization
 active_sessions = {}
 
+
+def get_session_lab_pi_url(session_key):
+    """Which Lab Pi backs this session, as http://ip:10000 — the one thing
+    every relay/proxy route needs to know before it can act. Tries the
+    in-memory active_sessions cache first (fast path, set by /experiment);
+    falls back to the database so this still works after a Master restart
+    (in-memory state is gone, but the booking/Session/LabPi rows aren't)."""
+    if not session_key:
+        return None
+    cached = active_sessions.get(session_key, {}).get('lab_pi_url')
+    if cached:
+        return cached
+
+    booking = Booking.query.filter_by(session_key=session_key).first()
+    if not booking:
+        return None
+    lab_pi = LabPi.query.filter_by(experiment_id=booking.experiment_id, status='ONLINE').first()
+    if not lab_pi or not lab_pi.ip_address:
+        return None
+    return f"http://{lab_pi.ip_address}:10000"
+
+
+def end_lab_pi_session(session_key, lab_pi_url=None):
+    """Tell the Lab Pi actually running this session that it's over — it
+    clears its own active_sessions entry and turns its relay off — and tear
+    down the Master's relay connection for it. This replaces calling the
+    Master's own (long-disabled, RELAY_PIN=None) relay_off(): the relay is
+    real hardware on the Lab Pi, not the Master, so only the Lab Pi can
+    actually turn it off. Best-effort — a session should still be considered
+    ended locally even if the Lab Pi can't be reached right now."""
+    url = lab_pi_url or get_session_lab_pi_url(session_key)
+    if url:
+        try:
+            requests.post(
+                f"{url}/api/lab-pi/session-end",
+                json={'session_key': session_key},
+                headers={'X-Master-Api-Key': MASTER_API_KEY},
+                timeout=5,
+            )
+        except Exception as e:
+            print(f"[Session] Could not notify Lab Pi at {url} that session {session_key} ended: {e}")
+    lab_pi_relay.disconnect(session_key)
+    audio_relay.disconnect(session_key)
+
+
 server_ready = False
 
 # Background task for checking expired sessions
@@ -393,19 +451,16 @@ def run_session_monitor():
                 
                 for session in expired_db_sessions:
                     session.status = 'EXPIRED'
-                    # Turn off relay when session expires
                     session_key = session.session_key
-                    if session_key in active_sessions:
-                        del active_sessions[session_key]
-                    
+                    active_sessions.pop(session_key, None)
+
                     # Update the associated booking status to COMPLETED
                     if session.booking:
                         session.booking.status = 'COMPLETED'
                         session.booking.completed_at = datetime.now()
-                    
-                    print(f"DB Session {session_key} expired, relay turned off, booking marked as COMPLETED")
-                    relay_off()
-                    
+
+                    print(f"DB Session {session_key} expired, notifying its Lab Pi, booking marked as COMPLETED")
+
                     # Send session report email for expired sessions
                     try:
                         user = User.query.get(session.user_id)
@@ -433,14 +488,12 @@ def run_session_monitor():
                             )
                     except Exception as e:
                         print(f"[SESSION REPORT] Failed to send report for expired session {session_key}: {e}")
-                
+
+                    end_lab_pi_session(session_key)
+
                 if expired_db_sessions:
                     db.session.commit()
-                
-                # Safety check: turn off relay if no active sessions exist
-                if not active_sessions:
-                    relay_off()
-                    
+
         except Exception as e:
             print(f"Error in session monitor: {e}")
         
@@ -516,92 +569,32 @@ def start_lab_pi_heartbeat_monitor():
         print("Lab Pi heartbeat monitor started")
 
 
-serial_lock = threading.Lock()
-ser = None
-ser_stop = threading.Event()
-data_generator_thread = None
-
-# ---------- RELAY CONTROL ----------
-import threading
-gpio_lock = threading.Lock()
-gpio_handle = None
-
-gpio_initialized = False
-
-def init_gpio():
-    global gpio_handle, gpio_initialized
-    if lgpio is None or RELAY_PIN is None:
-        return False
-    with gpio_lock:
-        try:
-            if gpio_handle is None:
-                gpio_handle = lgpio.gpiochip_open(0)
-                lgpio.gpio_claim_output(gpio_handle, RELAY_PIN)
-                gpio_initialized = True
-                print(f"GPIO initialized on pin {RELAY_PIN}")
-            return True
-        except Exception as e:
-            print(f"Error initializing GPIO: {e}")
-            gpio_handle = None
-            return False
-
-def relay_on():
-    """Turn relay ON"""
-    if not init_gpio():
-        print("Error: Failed to initialize GPIO for relay ON")
-        return False
-    with gpio_lock:
-        try:
-            lgpio.gpio_write(gpio_handle, RELAY_PIN, 0)  # LOW = relay ON
-            print("Relay ON")
-            return True
-        except Exception as e:
-            print(f"Error turning relay ON: {e}")
-            return False
-
-def relay_off():
-    """Turn relay OFF"""
-    if not init_gpio():
-        print("Error: Failed to initialize GPIO for relay OFF")
-        return False
-    with gpio_lock:
-        try:
-            lgpio.gpio_write(gpio_handle, RELAY_PIN, 1)  # HIGH = relay OFF
-            print("Relay OFF")
-            return True
-        except Exception as e:
-            print(f"Error turning relay OFF: {e}")
-            return False
+# Relay control and serial I/O both live on the Lab Pi that owns the
+# hardware now, not here — see MASTER_UI_MIGRATION_PLAN.md. What used to be
+# local GPIO control (relay_on/relay_off via lgpio) and a local pyserial
+# connection (ser/serial_reader_worker) were removed in favor of
+# end_lab_pi_session() and lab_pi_relay, which act on the correct Lab Pi for
+# each session instead of hardware attached to the Master itself.
 
 # ---------- UTIL FUNCTIONS ----------
 def check_expired_sessions():
     """Check for expired sessions and remove them from active_sessions.
-    Turns off relay when sessions expire."""
+    Notifies each session's own Lab Pi so it turns its relay off and tears
+    down the Master's relay connection for it."""
     now = datetime.now()
-    expired_keys = []
-    
+    expired = []
+
     for session_key, session_data in active_sessions.items():
         expires_at = session_data.get('expires_at')
         if expires_at and now.timestamp() > expires_at:
-            expired_keys.append(session_key)
-            print(f"Session {session_key} expired, will be removed and relay turned off")
-    
-    # Remove expired sessions and turn off relay
-    for key in expired_keys:
-        if key in active_sessions:
-            del active_sessions[key]
-            relay_off()
-    
-    # Safety check: turn off relay if no active sessions exist
-    if not active_sessions:
-        relay_off()
-    
-    return expired_keys
+            expired.append((session_key, session_data.get('lab_pi_url')))
+            print(f"Session {session_key} expired, will be removed and its Lab Pi notified")
 
-def list_serial_ports():
-    if list_ports is None:
-        return []
-    return [p.device for p in list_ports.comports()]
+    for session_key, lab_pi_url in expired:
+        active_sessions.pop(session_key, None)
+        end_lab_pi_session(session_key, lab_pi_url)
+
+    return [key for key, _ in expired]
 
 def generate_session_key():
     return ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
@@ -2548,95 +2541,87 @@ def experiment():
     ).first()
     
     print(f"[EXPERIMENT] Looking for Lab Pi: experiment_id={booking.experiment_id}, found={lab_pi}")
-    
-    # Notify Lab Pi to start session if found
-    lab_pi_url = None
-    lab_pi_notified = False  # Track if Lab Pi was successfully notified
-    if lab_pi:
-        # Use the Lab Pi's actual IP address from database
-        lab_pi_ip = lab_pi.ip_address if lab_pi.ip_address else request.host.split(':')[0]
-        lab_pi_url = f"http://{lab_pi_ip}:10000"  # Lab Pi runs on port 10000
-        print(f"[EXPERIMENT] Found Lab Pi: {lab_pi.lab_pi_id} at {lab_pi_url}")
-        
-        # Get board type - device-level override takes precedence over experiment
-        exp_name = booking.experiment.name if booking.experiment else 'Unknown'
-        if lab_pi.board_type:
-            board_type = lab_pi.board_type
-        else:
-            board_type = booking.experiment.board_type if booking.experiment else 'arduino'
-        
-        # Get SOP file - device-level override takes precedence over experiment
-        if lab_pi.sop_file:
-            sop_file = lab_pi.sop_file
-        else:
-            sop_file = booking.experiment.sop_file if booking.experiment else None
-        
-        # Send command to Lab Pi to start session
-        try:
-            response = requests.post(
-                f"{lab_pi_url}/api/lab-pi/session-start",
-                json={
-                    'session_key': session_key,
-                    'booking_id': booking.id,
-                    'user_email': current_user.email,
-                    'session_end_time': int(booking.end_time.timestamp() * 1000),  # JS milliseconds
-                    'experiment_name': exp_name,
-                    'board_type': board_type,
-                    'sop_file': sop_file
-                },
-                headers={'X-Lab-Pi-Id': lab_pi.lab_pi_id, 'X-Master-Api-Key': MASTER_API_KEY},
-                timeout=5
-            )
-            print(f"[EXPERIMENT] Lab Pi notification response: {response.status_code}")
-            lab_pi_notified = True  # Mark as successful
-            # Update Lab Pi state
-            lab_pi.current_session_key = session_key
-            lab_pi.session_start_time = datetime.utcnow()
-            db.session.commit()
-            
-            # Log session start
-            exp_name = booking.experiment.name if booking.experiment else 'Unknown'
-            log_entry = SystemLog(
-                level='INFO',
-                category='EXPERIMENT',
-                message=f'Session started: {current_user.email} - Experiment: {exp_name} - Lab Pi: {lab_pi.lab_pi_id}',
-                device_id=lab_pi.id,
-                user_id=current_user.id
-            )
-            db.session.add(log_entry)
-            db.session.commit()
-            
-        except Exception as e:
-            print(f"Failed to notify Lab Pi: {e}")
-    
-    # Add to active sessions
+
+    if not lab_pi or not lab_pi.ip_address:
+        # No hardware currently reachable for this experiment. Do NOT send the
+        # browser to a Lab Pi's own address (see MASTER_UI_MIGRATION_PLAN.md —
+        # the browser must only ever talk to the Master PC) and do not render
+        # a page that looks live but has nothing behind it either.
+        return render_template('expired_session.html', message="No hardware is currently online for this experiment. Please try again shortly or contact support.")
+
+    lab_pi_url = f"http://{lab_pi.ip_address}:10000"  # Lab Pi runs on port 10000
+    print(f"[EXPERIMENT] Found Lab Pi: {lab_pi.lab_pi_id} at {lab_pi_url}")
+
+    # Device-level override takes precedence over the experiment's own default
+    exp_name = booking.experiment.name if booking.experiment else 'Unknown'
+    board_type = lab_pi.board_type or (booking.experiment.board_type if booking.experiment else 'arduino')
+    sop_file = lab_pi.sop_file or (booking.experiment.sop_file if booking.experiment else None)
+
+    # Tell the Lab Pi a session is starting so it accepts the commands the
+    # Master is about to relay to it (flash/factory-reset/relay all require
+    # current_session_key to be set on the Lab Pi side).
+    lab_pi_notified = False
+    try:
+        response = requests.post(
+            f"{lab_pi_url}/api/lab-pi/session-start",
+            json={
+                'session_key': session_key,
+                'booking_id': booking.id,
+                'user_email': current_user.email,
+                'session_end_time': int(booking.end_time.timestamp() * 1000),  # JS milliseconds
+                'experiment_name': exp_name,
+                'board_type': board_type,
+                'sop_file': sop_file
+            },
+            headers={'X-Lab-Pi-Id': lab_pi.lab_pi_id, 'X-Master-Api-Key': MASTER_API_KEY},
+            timeout=5
+        )
+        print(f"[EXPERIMENT] Lab Pi notification response: {response.status_code}")
+        lab_pi_notified = True
+        lab_pi.current_session_key = session_key
+        lab_pi.session_start_time = datetime.utcnow()
+        db.session.commit()
+
+        log_entry = SystemLog(
+            level='INFO',
+            category='EXPERIMENT',
+            message=f'Session started: {current_user.email} - Experiment: {exp_name} - Lab Pi: {lab_pi.lab_pi_id}',
+            device_id=lab_pi.id,
+            user_id=current_user.id
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+    except Exception as e:
+        print(f"Failed to notify Lab Pi: {e}")
+
+    if not lab_pi_notified:
+        return render_template('expired_session.html', message="Could not reach the Lab Pi for this experiment. Please try again shortly or contact support.")
+
+    # Every proxy/relay route (toggle_relay, flash, factory_reset, ports, the
+    # SocketIO relay) reads lab_pi_url straight from here — this is the one
+    # place a session gets bound to the specific Lab Pi handling it.
     active_sessions[session_key] = {
         'start_time': time.time(),
         'duration': session.duration,
         'expires_at': session.end_time.timestamp(),
-        'lab_pi_id': lab_pi.lab_pi_id if lab_pi else None,
+        'lab_pi_id': lab_pi.lab_pi_id,
         'lab_pi_url': lab_pi_url
     }
-    
+
     duration = session.duration
     session_end_time = int(session.end_time.timestamp() * 1000)
-    
+
     print(f"[Experiment] Session end time: {session_end_time}, booking end_time: {session.end_time}, duration: {duration}")
-    
-    # If Lab Pi is available AND was successfully notified, redirect to Lab Pi's experiment page
-    if lab_pi and lab_pi_url and lab_pi_notified:
-        # Redirect to Lab Pi's experiment page using the correct IP, passing session_end_time as fallback
-        redirect_url = f"http://{lab_pi.ip_address}:10000/experiment?key={session_key}&end_time={session_end_time}"
-        print(f"[Experiment] Redirecting to Lab Pi: {redirect_url}")
-        return redirect(redirect_url)
-    
-    # Fallback: Pass Lab Pi info to template if Lab Pi not available or not notified
-    return render_template('index.html', 
-        session_duration=duration, 
+
+    # Always render the Master's own page — never redirect the browser to
+    # the Lab Pi's address. Its JS talks back to Master routes/sockets only,
+    # which proxy through to lab_pi_url server-side.
+    return render_template('index.html',
+        session_duration=duration,
         session_end_time=session_end_time,
-        lab_pi_url=lab_pi_url,
-        lab_pi_id=lab_pi.lab_pi_id if lab_pi else None,
-        board_type=board_type if 'board_type' in locals() else 'arduino'
+        session_key=session_key,
+        lab_pi_id=lab_pi.lab_pi_id,
+        board_type=board_type
     )
 
 @app.route('/add_session', methods=['POST'])
@@ -2661,8 +2646,9 @@ def remove_session():
     data = request.get_json()
     session_key = data.get('session_key')
     if session_key in active_sessions:
+        lab_pi_url = active_sessions[session_key].get('lab_pi_url')
         del active_sessions[session_key]
-        relay_off()
+        end_lab_pi_session(session_key, lab_pi_url)
     return jsonify({'status': 'removed'})
 
 @app.route('/toggle_relay', methods=['POST'])
@@ -2671,23 +2657,22 @@ def toggle_relay():
     data = request.get_json()
     state = data.get('state')
     session_key = data.get('session_key')
-    
+
     # Check for expired sessions first and clean them up
     check_expired_sessions()
-    
-    # Check if session is valid
+
     if session_key not in active_sessions:
-        # Call lab-pi to turn off relay
-        try:
-            requests.post('http://localhost:10000/toggle_relay', 
-                        json={'state': 'off', 'session_key': session_key}, timeout=2)
-        except:
-            pass
         return jsonify({'status': 'error', 'message': 'Invalid or expired session'}), 400
-    
-    # Forward relay control to lab-pi (which controls the actual GPIO)
+
+    lab_pi_url = active_sessions[session_key].get('lab_pi_url')
+    if not lab_pi_url:
+        return jsonify({'status': 'error', 'message': 'No Lab Pi assigned to this session'}), 400
+
+    # Forward relay control to the session's own Lab Pi (which owns the
+    # actual GPIO) — never a hardcoded address, since different sessions can
+    # be running on different Lab Pis at the same time.
     try:
-        response = requests.post('http://localhost:10000/toggle_relay', 
+        response = requests.post(f'{lab_pi_url}/toggle_relay',
                                json={'state': state, 'session_key': session_key}, timeout=5)
         result = response.json()
         return jsonify(result)
@@ -2711,90 +2696,142 @@ def test_relay():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
 
+def _validate_session_and_get_lab_pi(session_key):
+    """Shared by /chart and /camera: is this session still live, and if so
+    which Lab Pi backs it? Populates active_sessions from the DB (with its
+    lab_pi_url resolved) if this is a fresh reconnect that skipped
+    /experiment's normal in-memory bookkeeping."""
+    if not session_key:
+        return None
+
+    session_data = active_sessions.get(session_key)
+    if session_data:
+        expires_at = session_data.get('expires_at')
+        if expires_at and datetime.now().timestamp() > expires_at:
+            active_sessions.pop(session_key, None)
+            end_lab_pi_session(session_key, session_data.get('lab_pi_url'))
+            return None
+        return session_data.get('lab_pi_url')
+
+    booking = Booking.query.filter_by(session_key=session_key).first()
+    if not booking:
+        return None
+    now = datetime.now()
+    if not (booking.start_time <= now <= booking.end_time):
+        return None
+
+    lab_pi_url = get_session_lab_pi_url(session_key)
+    active_sessions[session_key] = {
+        'start_time': time.time(),
+        'duration': (booking.end_time - booking.start_time).total_seconds() // 60,
+        'expires_at': booking.end_time.timestamp(),
+        'lab_pi_url': lab_pi_url,
+    }
+    return lab_pi_url
+
+
 @app.route('/chart')
 @login_required
 def chart():
     session_key = request.args.get('key')
-    if not session_key:
-        return render_template('expired_session.html')
-    
-    # Check if session is valid (either in active_sessions or in database)
-    session_valid = False
-    
-    # First check active sessions dictionary - verify it's not expired
-    if session_key in active_sessions:
-        session_data = active_sessions[session_key]
-        expires_at = session_data.get('expires_at')
-        if expires_at and datetime.now().timestamp() > expires_at:
-            # Session expired, remove it and turn off relay
-            del active_sessions[session_key]
-            relay_off()
-        else:
-            session_valid = True
-    else:
-        # Check database for active session
-        booking = Booking.query.filter_by(session_key=session_key).first()
-        if booking:
-            # Check if booking is active
-            now = datetime.now()
-            if booking.start_time <= now <= booking.end_time:
-                session_valid = True
-                # Add to active sessions if not already present
-                active_sessions[session_key] = {
-                    'start_time': time.time(),
-                    'duration': (booking.end_time - booking.start_time).total_seconds() // 60,
-                    'expires_at': booking.end_time.timestamp()
-                }
-    
-    if not session_valid:
+    if not _validate_session_and_get_lab_pi(session_key):
         return redirect(url_for('index'))
-    
     return render_template('chart.html')
+
+@app.route('/oscilloscope')
+@login_required
+def oscilloscope():
+    session_key = request.args.get('key')
+    if not _validate_session_and_get_lab_pi(session_key):
+        return redirect(url_for('index'))
+    return render_template('oscilloscope.html')
 
 @app.route('/camera')
 @login_required
 def camera():
     session_key = request.args.get('key')
-    if not session_key:
-        return render_template('expired_session.html')
-    
-    # Check if session is valid (either in active_sessions or in database)
-    session_valid = False
-    
-    # First check active sessions dictionary - verify it's not expired
-    if session_key in active_sessions:
-        session_data = active_sessions[session_key]
-        expires_at = session_data.get('expires_at')
-        if expires_at and datetime.now().timestamp() > expires_at:
-            # Session expired, remove it and turn off relay
-            del active_sessions[session_key]
-            relay_off()
-        else:
-            session_valid = True
-    else:
-        # Check database for active session
-        booking = Booking.query.filter_by(session_key=session_key).first()
-        if booking:
-            # Check if booking is active
-            now = datetime.now()
-            if booking.start_time <= now <= booking.end_time:
-                session_valid = True
-                # Add to active sessions if not already present
-                active_sessions[session_key] = {
-                    'start_time': time.time(),
-                    'duration': (booking.end_time - booking.start_time).total_seconds() // 60,
-                    'expires_at': booking.end_time.timestamp()
-                }
-    
-    if not session_valid:
+    if not _validate_session_and_get_lab_pi(session_key):
         return redirect(url_for('index'))
-    
     return render_template('camera.html')
+
+@app.route('/session/<session_key>/camera-stream')
+@login_required
+def camera_stream(session_key):
+    """MJPEG proxy: the browser hits this Master route, Master streams it
+    from the session's Lab Pi's ustreamer (port 8080) and pipes the bytes
+    straight through. The browser's <img> tag never points at a Lab Pi
+    address — see MASTER_UI_MIGRATION_PLAN.md Phase 3, "camera (MJPEG) is
+    the easier of the two" relays. (Audio/WebRTC is not relayed yet — that's
+    the genuinely hard one, still pending its own design pass.)"""
+    booking = Booking.query.filter_by(session_key=session_key).first()
+    if not booking or booking.user_id != current_user.id:
+        return jsonify({'error': 'Not your session'}), 403
+
+    lab_pi_url = get_session_lab_pi_url(session_key)
+    if not lab_pi_url:
+        return jsonify({'error': 'No Lab Pi assigned to this session'}), 400
+
+    camera_url = lab_pi_url.replace(':10000', ':8080') + '/?action=stream&resolution=1920x1080&quality=100'
+    try:
+        upstream = requests.get(camera_url, stream=True, timeout=10)
+    except Exception as e:
+        return jsonify({'error': f'Camera stream unavailable: {e}'}), 502
+
+    def relay_chunks():
+        try:
+            for chunk in upstream.iter_content(chunk_size=4096):
+                if chunk:
+                    yield chunk
+        finally:
+            upstream.close()
+
+    return Response(relay_chunks(), content_type=upstream.headers.get('Content-Type', 'multipart/x-mixed-replace'))
+
+@app.route('/session/<session_key>/audio-offer', methods=['POST'])
+@login_required
+def audio_offer(session_key):
+    """WebRTC signaling endpoint for the browser's audio peer connection —
+    see audio_relay.py for the two-peer-connection relay this negotiates
+    (Master <-> Lab Pi mic, Master <-> this browser). The browser's SDP
+    offer never goes anywhere near the Lab Pi's own address."""
+    booking = Booking.query.filter_by(session_key=session_key).first()
+    if not booking or booking.user_id != current_user.id:
+        return jsonify({'error': 'Not your session'}), 403
+
+    lab_pi_url = get_session_lab_pi_url(session_key)
+    if not lab_pi_url:
+        return jsonify({'error': 'No Lab Pi assigned to this session'}), 400
+
+    data = request.get_json(force=True) or {}
+    sdp = data.get('sdp')
+    type_ = data.get('type', 'offer')
+    if not sdp:
+        return jsonify({'error': 'Missing SDP'}), 400
+
+    try:
+        answer_sdp, answer_type = audio_relay.handle_offer(session_key, lab_pi_url, sdp, type_)
+    except Exception as e:
+        print(f"[AudioRelay] Offer handling failed for session {session_key}: {e}")
+        return jsonify({'error': str(e)}), 502
+
+    return jsonify({'sdp': answer_sdp, 'type': answer_type})
 
 @app.route('/ports')
 @login_required
 def ports_rest():
-    return jsonify({'ports': list_serial_ports()})
+    """One-shot port list for a session's Lab Pi — the SocketIO relay's
+    'ports_list' event covers the live-updating case; this covers a plain
+    page load or a client that hasn't opened a socket yet."""
+    session_key = request.args.get('key')
+    lab_pi_url = get_session_lab_pi_url(session_key)
+    if not lab_pi_url:
+        return jsonify({'ports': []})
+    try:
+        response = requests.get(f'{lab_pi_url}/ports', timeout=5)
+        return jsonify(response.json())
+    except Exception as e:
+        print(f"Error fetching ports from Lab Pi: {e}")
+        return jsonify({'ports': []})
 
 # ---------- BOOKING SYSTEM ----------
 
@@ -3186,244 +3223,61 @@ def start_booking(booking_id):
     return redirect(url_for('experiment', key=booking.session_key))
 
 # ---------- FLASH AND FIRMWARE ----------
+# Both routes below used to run avrdude/esptool/openocd locally on the
+# Master via `subprocess.Popen(cmd, shell=True, ...)` with `port` (straight
+# from the request) interpolated into that shell string — a command
+# injection hole, and architecturally wrong besides, since the Master has no
+# boards attached. They now proxy to the session's own Lab Pi, whose /flash
+# and /factory_reset already build an argv list instead of a shell string
+# (see lab-pi/app.py's _flash_commands). Flashing progress arrives back over
+# the SocketIO relay as 'flashing_status' events exactly as before — the Lab
+# Pi emits them, lab_pi_relay forwards them into this session's room.
 @app.route('/flash', methods=['POST'])
 @login_required
 def flash_firmware():
-    global ser, ser_stop, data_generator_thread
-    
-    board = request.form.get('board', 'generic')
-    port = request.form.get('port', '') or ''
-    available_ports = list_serial_ports()
-    
-    # Disconnect serial if connected before flashing
-    with serial_lock:
-        if ser and ser.is_open:
-            try:
-                ser.close()
-                print(f"Serial port closed for flashing")
-            except Exception as e:
-                print(f"Error closing serial: {e}")
-    
-    # Stop the serial reader thread if running
-    ser_stop.set()
-    
-    # Validate port - don't use default if no ports available
-    if not available_ports:
-        return jsonify({'status': 'No serial ports found. Please connect the ESP32 device.'}), 400
-    
-    # Validate provided port exists in available ports
-    if port and port not in available_ports:
-        return jsonify({'status': f'Port {port} not found. Available ports: {available_ports}'}), 400
-    
-    # Use first available port if none specified
-    port = port or available_ports[0]
-    
+    session_key = request.form.get('session_key')
+    lab_pi_url = get_session_lab_pi_url(session_key)
+    if not lab_pi_url:
+        return jsonify({'status': 'No Lab Pi assigned to this session'}), 400
+
     fw = request.files.get('firmware')
     if not fw:
         return jsonify({'status': 'No firmware uploaded'}), 400
-    fname = secure_filename(fw.filename)
-    dest = os.path.join(UPLOAD_DIR, fname)
-    fw.save(dest)
 
-    # Determine firmware file type based on extension
-    file_ext = os.path.splitext(fname)[1].lower()
-
-    # Improved flashing commands with proper options for reliability
-    # Key fixes: add baud rate, flash_size detect, and --after hard_reset
-    # Use sys.executable to ensure we use the venv's Python (which has esptool installed)
-    # This avoids PATH issues and ensures we use the correct esptool
-    python_exec = sys.executable
-    commands = {
-        'esp32': f"{python_exec} -m esptool --chip esp32 --port {port} --baud 115200 --before default-reset write-flash 0x10000 {dest}",
-        'esp8266': f"{python_exec} -m esptool --chip esp8266 --port {port} --baud 115200 --before default-reset write-flash 0x00000 {dest}",
-        'arduino': f"avrdude -v -p atmega328p -c arduino -P {port} -b115200 -D -U flash:w:{dest}:{ 'i' if file_ext == '.hex' else 'r' }",
-        'attiny': f"avrdude -v -p attiny85 -c usbasp -P {port} -U flash:w:{dest}:{ 'i' if file_ext == '.hex' else 'r' }",
-        'stm32': f"openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c \"program {dest} 0x08000000 verify reset exit\"",
-        'nucleo_f446re': f"openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c \"program {dest} 0x08000000 verify reset exit\"",
-        'black_pill': f"openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c \"program {dest} 0x08000000 verify reset exit\"",
-        'msp430': f"echo 'mspdebug not available. Please install mspdebug to flash MSP430 boards'",
-        'tiva': f"openocd -f board/ti_ek-tm4c123gxl.cfg -c \"program {dest} verify reset exit\"",
-        'tms320f28377s': f"python3 dsp/flash_tool.py {dest}",
-        'generic': f"echo 'No flashing command configured for {board}. Uploaded to {dest}'"
-    }
-
-    cmd = commands.get(board, commands['generic'])
-    socketio.start_background_task(run_flash_command, cmd, fname)
-    return jsonify({'status': f'Flashing started for {board}', 'command': cmd, 'port': port})
-
-def run_flash_command(cmd, filename=None, timeout=180):
-    """Run flash command with timeout and better error handling"""
-    import select
-    import fcntl
-    import os
-    import signal
-    
     try:
-        socketio.emit('flashing_status', f"Starting: {cmd}")
-        
-        # Check if command contains 'echo' (which is always available)
-        if 'echo' in cmd:
-            p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        else:
-            # Check if command starts with a known available tool (handle both full path and short name)
-            first_word = cmd.split()[0]
-            # Extract just the executable name (handle both /usr/bin/python3 and python3)
-            tool_name = os.path.basename(first_word)
-            if tool_name not in ['avrdude', 'esptool', 'esptool.py', 'openocd', 'python3', 'python']:
-                socketio.emit('flashing_status', f'❌ Error: Tool {tool_name} not installed')
-                return
-            
-            # Extract port from command for cleanup (supports --port, -P, and openocd interfaces)
-            port_match = re.search(r'(?:--port|-P)\s+(\S+)', cmd)
-            if port_match:
-                port = port_match.group(1)
-                # Kill any existing processes using this port
-                try:
-                    result = subprocess.run(f'lsof -t {port}', shell=True, capture_output=True, text=True)
-                    if result.stdout.strip():
-                        pids = result.stdout.strip().split('\n')
-                        for pid in pids:
-                            try:
-                                os.kill(int(pid), signal.SIGKILL)
-                                socketio.emit('flashing_status', f'Cleaned up process {pid} using {port}')
-                            except:
-                                pass
-                        time.sleep(1)  # Wait for port to be released
-                except:
-                    pass
-            
-            # Also check for OpenOCD processes (used for STM32, Tiva, etc.)
-            if 'openocd' in cmd:
-                try:
-                    result = subprocess.run('pkill -9 -f openocd', shell=True, capture_output=True, text=True)
-                    time.sleep(0.5)
-                except:
-                    pass
-            
-            # Use subprocess with non-blocking output reading
-            p = subprocess.Popen(
-                cmd, 
-                shell=True, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.STDOUT, 
-                text=True,
-                bufsize=1
-            )
-            
-            # Set non-blocking mode for stdout
-            fd = p.stdout.fileno()
-            fl = fcntl.fcntl(fd, fcntl.F_GETFL)
-            fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
-            
-            start_time = time.time()
-            output_lines = []
-            
-            while True:
-                # Check if process has finished
-                ret = p.poll()
-                
-                # Try to read any available output
-                try:
-                    line = p.stdout.readline()
-                    if line:
-                        socketio.emit('flashing_status', line.strip())
-                        output_lines.append(line)
-                except:
-                    pass
-                
-                # If process finished and no more output, exit loop
-                if ret is not None:
-                    # Wait a bit for any remaining output
-                    time.sleep(0.5)
-                    try:
-                        line = p.stdout.readline()
-                        while line:
-                            socketio.emit('flashing_status', line.strip())
-                            output_lines.append(line)
-                            line = p.stdout.readline()
-                    except:
-                        pass
-                    break
-                
-                # Check for timeout
-                if time.time() - start_time > timeout:
-                    p.kill()
-                    p.wait()
-                    socketio.emit('flashing_status', f'❌ Error: Flashing timed out after {timeout} seconds')
-                    return
-                
-                # Small sleep to prevent CPU spinning
-                time.sleep(0.1)
-            
-            rc = p.returncode
-        
-        msg = '✅ Flashing completed successfully' if rc == 0 else f'⚠️ Flashing ended with return code {rc}'
-        socketio.emit('flashing_status', f'{msg} (file: {filename})')
+        response = requests.post(
+            f'{lab_pi_url}/flash',
+            data={'board': request.form.get('board', 'generic'), 'port': request.form.get('port', '')},
+            files={'firmware': (secure_filename(fw.filename), fw.stream, fw.mimetype)},
+            timeout=15,
+        )
+        return jsonify(response.json()), response.status_code
     except Exception as e:
-        socketio.emit('flashing_status', f'Error while flashing: {e}')
+        print(f"Error proxying flash to Lab Pi: {e}")
+        return jsonify({'status': f'Failed to reach Lab Pi: {e}'}), 502
 
 @app.route('/factory_reset', methods=['POST'])
 @login_required
 def factory_reset():
     try:
         data = request.get_json(force=True)
-    except:
+    except Exception:
         data = request.form.to_dict()
-    board = (data.get('board') or 'generic').lower()
 
-    default_map = {
-        'esp32': 'esp32_default.bin',
-        'esp8266': 'esp32_default.bin',
-        'arduino': 'arduino_default.hex',
-        'attiny': 'attiny_default.hex',
-        'stm32': 'stm32_default.bin',
-        'nucleo_f446re': 'stm32_default.bin',
-        'black_pill': 'stm32_default.bin',
-        'msp430': 'generic_default.bin',
-        'tiva': 'tiva_default.out',
-        'tms320f28377s': 'tms320f28377s_default.out',
-        'generic': 'generic_default.bin'
-    }
+    lab_pi_url = get_session_lab_pi_url(data.get('session_key'))
+    if not lab_pi_url:
+        return jsonify({'error': 'No Lab Pi assigned to this session'}), 400
 
-    fname = default_map.get(board, default_map['generic'])
-    fpath = os.path.join(DEFAULT_FW_DIR, fname)
-    if not os.path.isfile(fpath):
-        return jsonify({'error': f'Default firmware not found for board {board}: expected {fpath}'}), 404
-
-    # Validate port - get from request or use first available
-    port = data.get('port') or ''
-    available_ports = list_serial_ports()
-    
-    if not available_ports:
-        return jsonify({'error': 'No serial ports found. Please connect the device.'}), 400
-    
-    # Validate provided port exists
-    if port and port not in available_ports:
-        return jsonify({'error': f'Port {port} not found. Available: {available_ports}'}), 400
-    
-    port = port or available_ports[0]
-    
-    # Determine firmware file type based on extension
-    file_ext = os.path.splitext(fname)[1].lower()
-
-    # Use sys.executable to ensure we use the venv's Python (which has esptool installed)
-    python_exec = sys.executable
-    commands = {
-        'esp32': f"{python_exec} -m esptool --chip esp32 --port {port} --baud 921600 write_flash 0x10000 {fpath}",
-        'esp8266': f"{python_exec} -m esptool --chip esp8266 --port {port} --baud 921600 write_flash 0x00000 {fpath}",
-        'arduino': f"avrdude -v -p atmega328p -c arduino -P {port} -b115200 -D -U flash:w:{fpath}:{ 'i' if file_ext == '.hex' else 'r' }",
-        'attiny': f"avrdude -v -p attiny85 -c usbasp -P {port} -U flash:w:{fpath}:{ 'i' if file_ext == '.hex' else 'r' }",
-        'stm32': f"openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c \"program {fpath} 0x08000000 verify reset exit\"",
-        'nucleo_f446re': f"openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c \"program {fpath} 0x08000000 verify reset exit\"",
-        'black_pill': f"openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c \"program {fpath} 0x08000000 verify reset exit\"",
-        'msp430': f"echo 'mspdebug not available. Please install mspdebug to flash MSP430 boards'",
-        'tiva': f"openocd -f board/ti_ek-tm4c123gxl.cfg -c \"program {fpath} verify reset exit\"",
-        'tms320f28377s': f"python3 dsp/flash_tool.py {fpath}",
-        'generic': f"echo 'No flashing command configured for {board}. Default firmware at {fpath}'"
-    }
-    cmd = commands.get(board, commands['generic'])
-    socketio.start_background_task(run_flash_command, cmd, fname)
-    return jsonify({'status': f'Factory reset started for {board}', 'command': cmd, 'port': port})
+    try:
+        response = requests.post(
+            f'{lab_pi_url}/factory_reset',
+            json={'board': data.get('board', 'generic'), 'port': data.get('port', '')},
+            timeout=15,
+        )
+        return jsonify(response.json()), response.status_code
+    except Exception as e:
+        print(f"Error proxying factory reset to Lab Pi: {e}")
+        return jsonify({'error': f'Failed to reach Lab Pi: {e}'}), 502
 
 @app.route('/sop/<path:filename>')
 @login_required
@@ -3691,7 +3545,14 @@ def lab_pi_session_end():
     
     session_key = data.get('session_key')
     reason = data.get('reason', 'completed')
-    
+
+    # The Lab Pi already knows its session is over — drop the Master's
+    # relay connection for it too so it doesn't sit there holding a socket
+    # to a Lab Pi that no longer has anything to say.
+    active_sessions.pop(session_key, None)
+    lab_pi_relay.disconnect(session_key)
+    audio_relay.disconnect(session_key)
+
     # Update Lab Pi state
     lab_pi.current_session_key = None
     lab_pi.session_start_time = None
@@ -4279,151 +4140,80 @@ def receive_audio_stream():
         return jsonify({'error': str(e)}), 500
 
 
-# ---------- MOCK GENERATOR ----------
-def mock_data_generator():
-    print("Mock data generator STARTED.")
-    try:
-        while True:
-            sensor1 = 25.0 + random.uniform(-5.0, 5.0)
-            sensor2 = 60.0 + random.uniform(-10.0, 10.0)
-            sensor3 = 0.5 + random.uniform(-0.2, 0.2)
-            sensor4 = 3.3 + random.uniform(-0.5, 0.5)
-            payload = {
-                'sensor1': round(sensor1, 2),
-                'sensor2': round(sensor2, 2),
-                'sensor3': round(sensor3, 3),
-                'sensor4': round(sensor4, 2)
-            }
-            socketio.emit('sensor_data', payload)
-            time.sleep(0.1)
-    except KeyboardInterrupt:
-        print("Mock data generator stopped.")
-    except Exception as e:
-        print("Mock data generator error:", e)
-
-# ---------- SERIAL READER ----------
-def serial_reader_worker(serial_obj):
-    try:
-        while not ser_stop.is_set():
-            line = serial_obj.readline()
-            if not line:
-                continue
-            try:
-                text = line.decode(errors='replace').strip()
-            except:
-                text = str(line)
-            socketio.emit('feedback', text)
-
-            if any(sep in text for sep in [':', '=', '@', '>', '#', '^', '!', '$', '*', '%', '~', '\\', '|', '+', '-', ';', ',']) and any(c.isdigit() for c in text):
-                trimmed = re.sub(r'^\d{1,2}:\d{2}:\d{2}\s*', '', text.strip())
-                pairGroups = re.split(r'[,;|/\\]', trimmed)
-                data = {}
-                for group in pairGroups:
-                    if not group.strip():
-                        continue
-                    normalized = re.sub(r'[:=>@#>^!$*~\\|+%\s&]+', ' ', group).strip()
-                    tokens = re.split(r'\s+', normalized)
-                    for i in range(0, len(tokens), 2):
-                        if i + 1 < len(tokens):
-                            k = tokens[i].strip().lower()
-                            rawv = tokens[i + 1].strip()
-                            try:
-                                num = float(re.sub(r'[^\d\.\-+eE]', '', rawv))
-                                if not math.isnan(num):
-                                    data[k] = num
-                            except:
-                                pass
-                if data:
-                    socketio.start_background_task(send_sensor_data_to_clients, data)
-    except Exception as e:
-        socketio.emit('feedback', f'[serial worker stopped] {e}')
-
 # ---------- SOCKET HANDLERS ----------
+# Every handler below is a thin relay: it never touches hardware directly
+# (the Master has none — see MASTER_UI_MIGRATION_PLAN.md), it just forwards
+# the browser's event, unchanged, to whichever Lab Pi is running that
+# browser's session, over lab_pi_relay's per-session client connection.
+
+def _session_for_sid():
+    with sid_session_lock:
+        return sid_session_map.get(request.sid)
+
+
 @socketio.on('connect')
 def on_connect():
-    print("[DEBUG] Client connected:", request.sid)
-    emit('ports_list', list_serial_ports())
+    # The page passes its session_key as a query param on the socket.io
+    # connection itself (see templates/index.html) — sockets don't inherit
+    # the page URL's querystring for free.
+    session_key = request.args.get('key')
+    print(f"[DEBUG] Client connected: {request.sid}, session_key={session_key}")
+    if not session_key:
+        emit('feedback', 'Server: socket connected (no session_key — nothing will work until one is set)')
+        return
+
+    lab_pi_url = get_session_lab_pi_url(session_key)
+    if not lab_pi_url:
+        emit('feedback', f'Server: no active Lab Pi found for session {session_key}')
+        return
+
+    join_room(session_key)
+    with sid_session_lock:
+        sid_session_map[request.sid] = session_key
+
     emit('feedback', 'Server: socket connected')
+    # Warm the relay connection immediately and ask the Lab Pi for its
+    # current port list, rather than waiting for the page to ask.
+    lab_pi_relay.forward(session_key, lab_pi_url, 'list_ports', {})
 
-@socketio.on('list_ports')
-def handle_list_ports():
-    emit('ports_list', list_serial_ports())
 
-@socketio.on('connect_serial')
-def handle_connect_serial(data):
-    global ser, ser_stop, data_generator_thread
-    port = data.get('port')
-    baud = int(data.get('baud', 115200))
-    if not port:
-        emit('serial_status', {'status': 'error', 'message': 'No port selected'})
+@socketio.on('disconnect')
+def on_disconnect():
+    session_key = _session_for_sid()
+    if not session_key:
         return
-    if serial is None:
-        emit('serial_status', {'status': 'error', 'message': 'pyserial not available on server'})
-        return
-    with serial_lock:
-        try:
-            if ser and ser.is_open:
-                ser.close()
-            if data_generator_thread:
-                data_generator_thread = None
+    with sid_session_lock:
+        sid_session_map.pop(request.sid, None)
+    leave_room(session_key)
+    # Only drop the Lab Pi connection once no browser tab for this session
+    # is listening anymore — a second tab (or a reconnect) shouldn't kill it.
+    room_members = socketio.server.manager.get_participants('/', session_key)
+    if not any(True for _ in room_members):
+        lab_pi_relay.disconnect(session_key)
 
-            ser = serial.Serial(port, baud, timeout=1)
-            ser_stop.clear()
-            _thread = threading.Thread(target=serial_reader_worker, args=(ser,), daemon=True)
-            _thread.start()
-            emit('serial_status', {'status': 'connected', 'port': port, 'baud': baud})
-        except Exception as e:
-            emit('serial_status', {'status': 'error', 'message': str(e)})
 
-@socketio.on('disconnect_serial')
-def handle_disconnect_serial():
-    global ser, ser_stop, data_generator_thread
-    with serial_lock:
-        try:
-            ser_stop.set()
-            if ser and ser.is_open:
-                ser.close()
-            if data_generator_thread is None:
-                data_generator_thread = threading.Thread(target=mock_data_generator, daemon=True)
-                data_generator_thread.start()
-            emit('serial_status', {'status': 'disconnected'})
-        except Exception as e:
-            emit('serial_status', {'status': 'error', 'message': str(e)})
+def _relay_from_browser(event):
+    """Forward `event` (with its data payload) from the connecting browser's
+    socket straight through to that session's Lab Pi."""
+    def handler(data=None):
+        session_key = _session_for_sid()
+        if not session_key:
+            emit('feedback', '[relay] No active session on this connection')
+            return
+        lab_pi_url = get_session_lab_pi_url(session_key)
+        if not lab_pi_url:
+            emit('feedback', '[relay] No Lab Pi is currently assigned to this session')
+            return
+        lab_pi_relay.forward(session_key, lab_pi_url, event, data)
+    return handler
 
-@socketio.on('send_command')
-def handle_send_command(data):
-    global ser
-    cmd = data.get('cmd', '')
-    out = cmd + ("\n" if not cmd.endswith("\n") else "")
-    try:
-        with serial_lock:
-            if ser and ser.is_open:
-                ser.write(out.encode())
-                emit('feedback', f'SENT> {cmd}')
-            else:
-                emit('feedback', f'[no-serial] {cmd}')
-    except Exception as e:
-        emit('feedback', f'[send error] {e}')
 
-@socketio.on('waveform_config')
-def handle_waveform_config(cfg):
-    shape = cfg.get('shape'); freq = cfg.get('freq'); amp = cfg.get('amp')
-    msg = f'WAVE {shape} FREQ {freq} AMP {amp}'
-    emit('feedback', f'[waveform] {msg}')
-    with serial_lock:
-        try:
-            if ser and ser.is_open:
-                ser.write((msg + "\n").encode())
-        except Exception as e:
-            emit('feedback', f'[waveform send error] {e}')
+for _relayed_event in (
+    'list_ports', 'connect_serial', 'disconnect_serial', 'send_command',
+    'reset_serial', 'waveform_config', 'update_osc_settings', 'osc_auto_level',
+):
+    socketio.on_event(_relayed_event, _relay_from_browser(_relayed_event))
 
-def send_sensor_data_to_clients(data):
-    try:
-        with app.app_context():
-            socketio.emit('sensor_data', data, namespace='/')
-            print("[DEBUG] Emitted to clients:", data)
-    except Exception as e:
-        print("[ERROR] Failed to emit sensor_data:", e)
 
 # ---------- MAIN ----------
 # Runs unconditionally at import time (not just under `python app.py`) so a
