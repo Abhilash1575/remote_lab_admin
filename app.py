@@ -2577,6 +2577,7 @@ def experiment():
             timeout=5
         )
         print(f"[EXPERIMENT] Lab Pi notification response: {response.status_code}")
+        response.raise_for_status()
         lab_pi_notified = True
         lab_pi.current_session_key = session_key
         lab_pi.session_start_time = datetime.utcnow()
@@ -2592,7 +2593,7 @@ def experiment():
         db.session.add(log_entry)
         db.session.commit()
     except Exception as e:
-        print(f"Failed to notify Lab Pi: {e}")
+        print(f"[EXPERIMENT] Failed to notify Lab Pi: {e}")
 
     if not lab_pi_notified:
         return render_template('expired_session.html', message="Could not reach the Lab Pi for this experiment. Please try again shortly or contact support.")
