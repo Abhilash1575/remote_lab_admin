@@ -2622,7 +2622,8 @@ def experiment():
         session_end_time=session_end_time,
         session_key=session_key,
         lab_pi_id=lab_pi.lab_pi_id,
-        board_type=board_type
+        board_type=board_type,
+        experiment_name=exp_name
     )
 
 @app.route('/add_session', methods=['POST'])
