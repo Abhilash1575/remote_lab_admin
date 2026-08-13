@@ -2535,8 +2535,6 @@ def experiment():
             print(f"[Session] Booking already completed, blocking access: {session_key}")
             return render_template('expired_session.html', message="This session has already been completed.")
         
-        # Calculate session duration from booking
-        session_duration_minutes = (booking.end_time - booking.start_time).total_seconds() // 60
         # Naive local time, matching booking.start_time/end_time (parsed from the
         # booking form as local wall-clock time, not UTC) and the session-expiry
         # monitor (which compares Session.end_time against datetime.now(), also
@@ -2544,7 +2542,16 @@ def experiment():
         # local — made every session appear to have expired hours in the past
         # the instant it was created, on any server not set to UTC.
         session_start = datetime.now()
-        session_end = session_start + timedelta(minutes=session_duration_minutes)
+        # The session must never run past the booked slot's own end time —
+        # it was previously given a fresh full-length window starting from
+        # whenever the student actually clicked in, so joining 30 minutes
+        # into a 60-minute booking gave another full 60 minutes instead of
+        # the 30 actually left. Duration is however much of the booked slot
+        # remains right now, which is 0 (not negative) if they're right at
+        # the edge of it — booking.start_time <= now <= booking.end_time is
+        # already guaranteed above.
+        session_end = booking.end_time
+        session_duration_minutes = max(0, (session_end - session_start).total_seconds() // 60)
         
         print(f"[Session] Creating session: duration={session_duration_minutes} min, start={session_start}, end={session_end}")
         
