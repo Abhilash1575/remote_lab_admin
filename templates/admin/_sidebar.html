@@ -1,0 +1,23 @@
+<div class="sidebar">
+    <div class="logo">
+        <img src="{{ url_for('static', filename='img/iken-mark.png') }}" alt="IKEN" style="filter: brightness(0) invert(1);">
+        <h1>IKEN Remote Lab</h1>
+        <p>Admin console</p>
+    </div>
+    <nav>
+        <ul>
+            <li><a href="{{ url_for('admin_dashboard') }}" class="{{ 'active' if active == 'dashboard' }}"><i class="fas fa-gauge-high"></i> Dashboard</a></li>
+            <li><a href="{{ url_for('manage_users') }}" class="{{ 'active' if active == 'users' }}"><i class="fas fa-users"></i> Users</a></li>
+            <li><a href="{{ url_for('manage_experiments') }}" class="{{ 'active' if active == 'experiments' }}"><i class="fas fa-flask"></i> Experiments</a></li>
+            <li><a href="{{ url_for('manage_devices') }}" class="{{ 'active' if active == 'devices' }}"><i class="fas fa-hdd"></i> Devices</a></li>
+            <li><a href="{{ url_for('manage_bookings') }}" class="{{ 'active' if active == 'bookings' }}"><i class="fas fa-calendar"></i> Bookings</a></li>
+            <li><a href="{{ url_for('manage_sessions') }}" class="{{ 'active' if active == 'sessions' }}"><i class="fas fa-clock"></i> Sessions</a></li>
+            <li><a href="{{ url_for('manage_logs') }}" class="{{ 'active' if active == 'logs' }}"><i class="fas fa-file-lines"></i> Logs &amp; monitoring</a></li>
+            <li><a href="{{ url_for('view_analytics') }}" class="{{ 'active' if active == 'analytics' }}"><i class="fas fa-chart-line"></i> Analytics</a></li>
+        </ul>
+        <ul style="margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <li><a href="{{ url_for('index') }}"><i class="fas fa-arrow-left"></i> Back to site</a></li>
+            <li><a href="{{ url_for('logout') }}"><i class="fas fa-arrow-right-from-bracket"></i> Sign out</a></li>
+        </ul>
+    </nav>
+</div>

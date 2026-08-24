@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Experiment UI Settings - IKEN Remote Lab</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+    <style>
+        .settings-card { margin-bottom: 20px; }
+        .settings-card h4 { color: var(--iken-navy); margin: 0 0 4px 0; font-size: 15px; font-weight: 800; }
+        .settings-card p.sub { color: var(--iken-text-muted, #7a8699); font-size: 13px; margin: 0 0 14px 0; }
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #eef0f4; }
+        .toggle-row:last-child { border-bottom: none; }
+        .toggle-row label.field-label { font-size: 13.5px; font-weight: 600; color: var(--iken-text); }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+        @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+        .radio-group { display: flex; gap: 16px; }
+        .radio-group label { display: flex; align-items: center; gap: 6px; font-size: 13.5px; }
+        .entry-row { border: 1px solid #eef0f4; border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 10px; }
+        .entry-row .entry-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .entry-row .entry-meta { color: var(--iken-text-muted, #7a8699); font-size: 12.5px; }
+        .entry-actions { display: flex; gap: 8px; flex-shrink: 0; }
+        .edit-form { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid #eef0f4; }
+        .inline-form-row { margin-bottom: 10px; }
+        .inline-form-row label.field-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--iken-text); margin-bottom: 4px; }
+        .add-form { margin-top: 16px; padding-top: 16px; border-top: 1px dashed #dfe3ea; }
+        .note { font-size: 12px; color: var(--iken-text-muted, #7a8699); margin-top: 4px; }
+    </style>
+</head>
+<body class="iken-body">
+    {% set active = 'devices' %}
+    {% include 'admin/_sidebar.html' %}
+
+    <div class="main-content">
+        <div class="admin-header" style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+            <h2><i class="fas fa-sliders-h"></i> Experiment UI settings &mdash; {{ device.name }}</h2>
+            <button type="submit" form="mainSettingsForm" class="iken-btn iken-btn-primary"><i class="fas fa-save"></i> Save settings</button>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div style="margin-bottom:20px;">
+                    {% for category, message in messages %}
+                        <div class="iken-flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <div style="margin-bottom:16px;">
+            <a href="{{ url_for('admin_lab_pi_edit', lab_pi_id=device.id) }}" class="iken-btn iken-btn-sm iken-btn-outline"><i class="fas fa-arrow-left"></i> Back to Lab Pi</a>
+        </div>
+
+        {% if sibling_lab_pis %}
+        <div class="admin-section settings-card">
+            <h4>Copy to another Lab Pi</h4>
+            <p class="sub">Saves whatever's currently set below to this Lab Pi, then copies that (control toggles, defaults, experiment name, required dynamic controls) onto another Lab Pi serving the same experiment. Serial port profiles are never copied &mdash; each board's device paths are its own; a required control pinned to a specific port is re-matched by port label on the target, or cleared with a warning if no port with that label exists there yet.</p>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <select class="iken-input" name="target_lab_pi_id" form="mainSettingsForm" style="width:240px">
+                    <option value="">-- Select target Lab Pi --</option>
+                    {% for sib in sibling_lab_pis %}
+                    <option value="{{ sib.id }}" {{ 'disabled' if sib.status != 'ONLINE' }}>{{ sib.name }}{{ ' (offline)' if sib.status != 'ONLINE' }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" form="mainSettingsForm" formaction="{{ url_for('admin_lab_pi_ui_copy_to', lab_pi_id=device.id) }}" class="iken-btn iken-btn-sm iken-btn-primary"><i class="fas fa-copy"></i> Save &amp; copy settings</button>
+            </div>
+        </div>
+        {% endif %}
+
+        <form id="mainSettingsForm" method="POST" action="{{ url_for('admin_lab_pi_ui_settings', lab_pi_id=device.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="all_control_keys" value="{{ control_keys | map('first') | join(',') }}">
+
+            <div class="admin-section settings-card">
+                <h4>Experiment</h4>
+                <p class="sub">Shown in the top bar of the student's experiment page.</p>
+                <input class="iken-input" type="text" name="experiment_name" value="{{ cfg.experiment_name }}" placeholder="Remote Lab DESE">
+            </div>
+
+            <div class="grid-2">
+                <div class="admin-section settings-card">
+                    <h4>Student controls</h4>
+                    <p class="sub">Disabled controls are greyed out for students and rejected server-side.</p>
+                    {% for key, label in control_keys %}
+                    <div class="toggle-row">
+                        <label class="field-label" for="control_{{ key }}">{{ label }}</label>
+                        <input type="checkbox" id="control_{{ key }}" name="control_{{ key }}" {{ 'checked' if cfg.controls.get(key, True) }}>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="admin-section settings-card">
+                    <h4>Defaults</h4>
+                    <p class="sub">Applied when a student's session loads.</p>
+                    <div class="toggle-row">
+                        <label class="field-label">Default view</label>
+                        <div class="radio-group">
+                            <label><input type="radio" name="main_view" value="plotter" {{ 'checked' if cfg.defaults.main_view == 'plotter' }}> Serial Plotter</label>
+                            <label><input type="radio" name="main_view" value="oscilloscope" {{ 'checked' if cfg.defaults.main_view == 'oscilloscope' }}> Oscilloscope</label>
+                        </div>
+                    </div>
+                    <div class="toggle-row">
+                        <label class="field-label" for="dynamic_controls_visible">Dynamic Controls panel visible by default</label>
+                        <input type="checkbox" id="dynamic_controls_visible" name="dynamic_controls_visible" {{ 'checked' if cfg.defaults.dynamic_controls_visible }}>
+                    </div>
+                    <div class="toggle-row">
+                        <label class="field-label" for="serial_plotter_allow_port_switch">Students can switch the Serial Plotter's port</label>
+                        <input type="checkbox" id="serial_plotter_allow_port_switch" name="serial_plotter_allow_port_switch" {{ 'checked' if cfg.defaults.serial_plotter_allow_port_switch }}>
+                    </div>
+                    <div class="toggle-row">
+                        <label class="field-label" for="serial_plotter_default_port_id">Default plotter port</label>
+                        <select class="iken-input" id="serial_plotter_default_port_id" name="serial_plotter_default_port_id" style="width:170px">
+                            {% for p in cfg.serial_ports %}
+                            <option value="{{ p.id }}" {{ 'selected' if cfg.defaults.serial_plotter_default_port_id == p.id }}>{{ p.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="inline-form-row" style="margin-top:10px">
+                        <label class="field-label" for="serial_plotter_required_prefixes">Required line prefix(es)</label>
+                        <input class="iken-input" type="text" id="serial_plotter_required_prefixes" name="serial_plotter_required_prefixes"
+                               value="{{ cfg.defaults.serial_plotter_required_prefixes | join(', ') }}" placeholder="e.g. DATA:, SENSOR:">
+                        <p class="note">Comma-separated. If set, only serial lines starting with one of these (case-insensitive) are plotted. Leave blank to plot any line that looks like data.</p>
+                    </div>
+                </div>
+            </div>
+
+        </form>
+
+        {% macro port_picker(field_id, current_value) %}
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <select class="iken-input" onchange="if(this.value) document.getElementById('{{ field_id }}').value = this.value;" style="width:160px">
+                <option value="">(pick detected)</option>
+                {% for ap in available_ports %}
+                <option value="{{ ap.path }}" {{ 'selected' if ap.path == current_value }}>{{ ap.label }}{{ ' -> ' + ap.resolved if ap.resolved }}</option>
+                {% endfor %}
+            </select>
+            <input class="iken-input" type="text" id="{{ field_id }}" name="sp_port" value="{{ current_value }}" placeholder="or type a custom path" style="flex:1;min-width:180px">
+        </div>
+        {% endmacro %}
+
+        <div class="admin-section settings-card">
+            <h4>Serial ports</h4>
+            <p class="sub">Define every MCU this Lab Pi talks to. Ports with "Student visible" off still connect and feed data in the background, but never show up in the student UI. Exactly one port should be the "Primary target" that slider/button commands are written to. Does not include the Oscilloscope, which has its own auto-detected port.</p>
+
+            {% if cfg.serial_ports %}
+              {% for p in cfg.serial_ports %}
+              <div class="entry-row">
+                <div class="entry-head">
+                  <div>
+                    <strong>{{ p.label }}</strong>
+                    <div class="entry-meta">{{ p.port or 'student picks port' }} @ {{ p.baud }}{{ ', primary target' if p.is_primary_target }}{{ ', hidden from students' if not p.student_visible }}{{ ', auto-connects' if p.auto_connect }}{{ ', disconnect locked' if not p.allow_disconnect }}</div>
+                  </div>
+                  <div class="entry-actions">
+                    <button type="button" class="iken-btn iken-btn-sm iken-btn-outline" onclick="toggleEdit('editPort_{{ p.id }}')">Edit</button>
+                    <form method="post" action="{{ url_for('admin_lab_pi_ui_port_delete', lab_pi_id=device.id, port_id=p.id) }}" style="margin:0" onsubmit="return confirm('Remove this serial port?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="iken-btn iken-btn-sm iken-btn-danger">Remove</button>
+                    </form>
+                  </div>
+                </div>
+                <form id="editPort_{{ p.id }}" class="edit-form" method="post" action="{{ url_for('admin_lab_pi_ui_port_edit', lab_pi_id=device.id, port_id=p.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <div class="inline-form-row"><label class="field-label">Label</label><input class="iken-input" type="text" name="sp_label" value="{{ p.label }}" required style="width:200px"></div>
+                  <div class="inline-form-row"><label class="field-label">Port (blank = student picks)</label>{{ port_picker('sp_port_edit_' + p.id, p.port) }}</div>
+                  <div class="inline-form-row"><label class="field-label">Baud</label>
+                    <select class="iken-input" name="sp_baud" style="width:130px">
+                      {% for b in [300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400] %}
+                      <option value="{{ b }}" {{ 'selected' if p.baud == b }}>{{ b }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="toggle-row"><label class="field-label">Student visible</label><input type="checkbox" name="sp_student_visible" {{ 'checked' if p.student_visible }}></div>
+                  <div class="toggle-row"><label class="field-label">Auto-connect</label><input type="checkbox" name="sp_auto_connect" {{ 'checked' if p.auto_connect }}></div>
+                  <div class="toggle-row"><label class="field-label">Students can disconnect</label><input type="checkbox" name="sp_allow_disconnect" {{ 'checked' if p.allow_disconnect }}></div>
+                  <div class="toggle-row"><label class="field-label">Primary target</label><input type="checkbox" name="sp_is_primary_target" {{ 'checked' if p.is_primary_target }}></div>
+                  <button type="submit" class="iken-btn iken-btn-sm iken-btn-primary" style="margin-top:10px">Save changes</button>
+                </form>
+              </div>
+              {% endfor %}
+            {% else %}
+              <p class="note">None configured yet &mdash; a single implicit "Default" port is used.</p>
+            {% endif %}
+
+            <form class="add-form" method="post" action="{{ url_for('admin_lab_pi_ui_port_add', lab_pi_id=device.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="inline-form-row"><label class="field-label" for="sp_label">Label</label><input class="iken-input" type="text" id="sp_label" name="sp_label" placeholder="e.g. Teacher MCU" required style="width:200px"></div>
+              <div class="inline-form-row"><label class="field-label" for="sp_port_new">Port (blank = student picks)</label>{{ port_picker('sp_port_new', '') }}</div>
+              <div class="inline-form-row"><label class="field-label" for="sp_baud">Baud</label>
+                <select class="iken-input" id="sp_baud" name="sp_baud" style="width:130px">
+                  {% for b in [300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400] %}
+                  <option value="{{ b }}" {{ 'selected' if b == 115200 }}>{{ b }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="toggle-row"><label class="field-label" for="sp_student_visible">Student visible</label><input type="checkbox" id="sp_student_visible" name="sp_student_visible" checked></div>
+              <div class="toggle-row"><label class="field-label" for="sp_auto_connect">Auto-connect</label><input type="checkbox" id="sp_auto_connect" name="sp_auto_connect"></div>
+              <div class="toggle-row"><label class="field-label" for="sp_allow_disconnect">Students can disconnect</label><input type="checkbox" id="sp_allow_disconnect" name="sp_allow_disconnect" checked></div>
+              <div class="toggle-row"><label class="field-label" for="sp_is_primary_target">Primary target</label><input type="checkbox" id="sp_is_primary_target" name="sp_is_primary_target"></div>
+              <button type="submit" class="iken-btn iken-btn-sm iken-btn-primary" style="margin-top:10px">Add port</button>
+            </form>
+        </div>
+
+        <div class="admin-section settings-card">
+            <h4>Required dynamic controls</h4>
+            <p class="sub">Always shown to students by default; they can't remove or edit these. Students can still add their own separate controls (unless "Students Can Add Their Own Dynamic Controls" above is off).</p>
+
+            {% if cfg.required_controls %}
+              {% for c in cfg.required_controls %}
+              <div class="entry-row">
+                <div class="entry-head">
+                  <div>
+                    <strong>{{ c.label }}</strong>
+                    <div class="entry-meta">
+                      {{ c.type }}{{ ', ' + c.cmdFormat if c.type == 'slider' and c.cmdFormat }}{% for p in cfg.serial_ports %}{% if p.id == c.portId %}, port: {{ p.label }}{% endif %}{% endfor %}{% if c.type == 'readout' and c.unit %}, unit: {{ c.unit }}{% endif %}
+                    </div>
+                  </div>
+                  <div class="entry-actions">
+                    <button type="button" class="iken-btn iken-btn-sm iken-btn-outline" onclick="toggleEdit('editRc_{{ c.id }}')">Edit</button>
+                    <form method="post" action="{{ url_for('admin_lab_pi_ui_control_delete', lab_pi_id=device.id, control_id=c.id) }}" style="margin:0" onsubmit="return confirm('Remove this control?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="iken-btn iken-btn-sm iken-btn-danger">Remove</button>
+                    </form>
+                  </div>
+                </div>
+                <form id="editRc_{{ c.id }}" class="edit-form" method="post" action="{{ url_for('admin_lab_pi_ui_control_edit', lab_pi_id=device.id, control_id=c.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="rc_type" value="{{ c.type }}">
+                  <div class="inline-form-row"><label class="field-label">Label</label><input class="iken-input" type="text" name="rc_label" value="{{ c.label }}" required style="width:200px"></div>
+                  <div class="inline-form-row"><label class="field-label">Port</label>
+                    <select class="iken-input" name="rc_port_id" style="width:180px">
+                      <option value="">(default)</option>
+                      {% for p in cfg.serial_ports %}
+                      <option value="{{ p.id }}" {{ 'selected' if p.id == c.portId }}>{{ p.label }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  {% if c.type == 'slider' %}
+                  <div class="inline-form-row"><label class="field-label">Min</label><input class="iken-input" type="number" step="any" name="rc_min" value="{{ c.min }}" style="width:120px"></div>
+                  <div class="inline-form-row"><label class="field-label">Max</label><input class="iken-input" type="number" step="any" name="rc_max" value="{{ c.max }}" style="width:120px"></div>
+                  <div class="inline-form-row"><label class="field-label">Resolution</label>
+                    <select class="iken-input" name="rc_precision" style="width:180px">
+                      <option value="0" {{ 'selected' if c.precision == 0 }}>0 (whole numbers)</option>
+                      <option value="1" {{ 'selected' if c.precision == 1 }}>0.0 (1 decimal)</option>
+                      <option value="2" {{ 'selected' if c.precision == 2 }}>0.00 (2 decimals)</option>
+                    </select>
+                  </div>
+                  <div class="inline-form-row"><label class="field-label">Command format</label><input class="iken-input" type="text" name="rc_cmd_format" value="{{ c.cmdFormat }}" style="width:160px"></div>
+                  {% elif c.type == 'button' %}
+                  <div class="inline-form-row"><label class="field-label">On command</label><input class="iken-input" type="text" name="rc_on_cmd" value="{{ c.onCmd }}" style="width:160px"></div>
+                  <div class="inline-form-row"><label class="field-label">Off command</label><input class="iken-input" type="text" name="rc_off_cmd" value="{{ c.offCmd }}" style="width:160px"></div>
+                  {% elif c.type == 'readout' %}
+                  <div class="inline-form-row"><label class="field-label">Data key</label><input class="iken-input" type="text" name="rc_data_key" value="{{ c.dataKey }}" style="width:200px"></div>
+                  <div class="inline-form-row"><label class="field-label">Unit (LaTeX)</label><input class="iken-input" type="text" name="rc_unit" value="{{ c.unit }}" style="width:160px"></div>
+                  <div class="inline-form-row"><label class="field-label">Decimals</label><input class="iken-input" type="number" name="rc_decimals" value="{{ c.decimals }}" style="width:100px"></div>
+                  {% endif %}
+                  <button type="submit" class="iken-btn iken-btn-sm iken-btn-primary" style="margin-top:10px">Save changes</button>
+                </form>
+              </div>
+              {% endfor %}
+            {% else %}
+              <p class="note">None configured yet.</p>
+            {% endif %}
+
+            <form class="add-form" method="post" action="{{ url_for('admin_lab_pi_ui_control_add', lab_pi_id=device.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="inline-form-row">
+                <label class="field-label" for="rc_type">Type</label>
+                <select class="iken-input" id="rc_type" name="rc_type" onchange="updateRcFields()" style="width:180px">
+                  <option value="slider">Slider</option>
+                  <option value="button">Button</option>
+                  <option value="readout">Readout</option>
+                </select>
+              </div>
+              <div class="inline-form-row">
+                <label class="field-label" for="rc_label">Label</label>
+                <input class="iken-input" type="text" id="rc_label" name="rc_label" required style="width:200px">
+              </div>
+              <div class="inline-form-row"><label class="field-label" for="rc_port_id">Port</label>
+                <select class="iken-input" id="rc_port_id" name="rc_port_id" style="width:180px">
+                  <option value="">(default)</option>
+                  {% for p in cfg.serial_ports %}
+                  <option value="{{ p.id }}">{{ p.label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <p class="note">Which board this control talks to. "(default)" sends to the Primary target port.</p>
+              <div id="rc_fields_slider" class="rc-fields">
+                <div class="inline-form-row"><label class="field-label" for="rc_min">Min</label><input class="iken-input" type="number" step="any" id="rc_min" name="rc_min" value="0" style="width:120px"></div>
+                <div class="inline-form-row"><label class="field-label" for="rc_max">Max</label><input class="iken-input" type="number" step="any" id="rc_max" name="rc_max" value="1023" style="width:120px"></div>
+                <div class="inline-form-row"><label class="field-label" for="rc_precision">Resolution</label>
+                  <select class="iken-input" id="rc_precision" name="rc_precision" style="width:180px">
+                    <option value="0">0 (whole numbers)</option>
+                    <option value="1">0.0 (1 decimal)</option>
+                    <option value="2">0.00 (2 decimals)</option>
+                  </select>
+                </div>
+                <div class="inline-form-row"><label class="field-label" for="rc_cmd_format">Command format</label><input class="iken-input" type="text" id="rc_cmd_format" name="rc_cmd_format" value="{value}" style="width:160px"></div>
+                <p class="note">Use <code>{value}</code> as the placeholder, e.g. <code>{value}</code>, <code>I{value}</code>, or <code>{value}A</code>.</p>
+              </div>
+              <div id="rc_fields_button" class="rc-fields" style="display:none">
+                <div class="inline-form-row"><label class="field-label" for="rc_on_cmd">On command</label><input class="iken-input" type="text" id="rc_on_cmd" name="rc_on_cmd" value="1" style="width:160px"></div>
+                <div class="inline-form-row"><label class="field-label" for="rc_off_cmd">Off command</label><input class="iken-input" type="text" id="rc_off_cmd" name="rc_off_cmd" value="0" style="width:160px"></div>
+              </div>
+              <div id="rc_fields_readout" class="rc-fields" style="display:none">
+                <div class="inline-form-row"><label class="field-label" for="rc_data_key">Data key</label><input class="iken-input" type="text" id="rc_data_key" name="rc_data_key" placeholder="e.g. temperature" style="width:200px"></div>
+                <div class="inline-form-row"><label class="field-label" for="rc_unit">Unit (LaTeX, e.g. <code>^\circ\text{C}</code>)</label><input class="iken-input" type="text" id="rc_unit" name="rc_unit" placeholder="e.g. ^\circ\text{C}" style="width:160px"></div>
+                <div class="inline-form-row"><label class="field-label" for="rc_decimals">Decimals</label><input class="iken-input" type="number" id="rc_decimals" name="rc_decimals" value="1" style="width:100px"></div>
+              </div>
+              <button type="submit" class="iken-btn iken-btn-sm iken-btn-primary" style="margin-top:10px">Add control</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    function toggleEdit(id) {
+        var el = document.getElementById(id);
+        el.style.display = el.style.display === 'none' || !el.style.display ? 'block' : 'none';
+    }
+    function updateRcFields() {
+        var type = document.getElementById('rc_type').value;
+        document.getElementById('rc_fields_slider').style.display = type === 'slider' ? 'block' : 'none';
+        document.getElementById('rc_fields_button').style.display = type === 'button' ? 'block' : 'none';
+        document.getElementById('rc_fields_readout').style.display = type === 'readout' ? 'block' : 'none';
+    }
+    </script>
+</body>
+</html>

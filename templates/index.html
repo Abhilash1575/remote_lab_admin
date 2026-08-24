@@ -24,6 +24,7 @@
 <meta charset="utf-8" />
 <title id="pageTitle">Embedded Virtual Lab - Session Active</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
@@ -31,61 +32,83 @@
 <script src="{{ url_for('static', filename='vendor/katex/katex.min.js') }}"></script>
 <style>
 /* (kept your original styles with small fixes) */
-html,body{height:100%;margin:0;font-family:'Inter',sans-serif;background:#1c1c2b;color:#e0e0e0;overflow:hidden}
-.header-bar{background:#0b2545;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;height:44px;position:relative}
-.header-experiment-name{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:14px;font-weight:600;color:#00f0ff;white-space:nowrap;max-width:40%;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+html,body{height:100%;margin:0;font-family:'Inter',sans-serif;background:#1c1c1f;color:#e0e0e0;overflow:hidden}
+.header-bar{background:#202225;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;height:44px;position:relative}
+.header-experiment-name{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:14px;font-weight:600;color:#3fc6d6;white-space:nowrap;max-width:40%;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 .header-bar h1{margin:0;font-size:16px}
-#timer{background:#e67e22;color:#1c1c2b;padding:6px 12px;border-radius:6px;font-weight:700}
+#timer{background:#d68f3f;color:#1c1c1f;padding:6px 12px;border-radius:6px;font-weight:700}
 .container{display:flex;height:calc(100vh - 44px);gap:12px;padding:12px;box-sizing:border-box}
 .left-column{width:360px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;overflow-x:hidden;padding-right:6px} /* prevent horizontal scroll */
 .right-column{flex:1;display:flex;flex-direction:column;gap:12px;overflow:auto}
-.card{background:#252538;padding:14px;border-radius:10px;border:1px solid #3d3d52;box-shadow:0 0 10px rgba(0,0,0,0.4);position:relative}
-.section-title, .card h3{color:#00f0ff;margin:0 0 8px 0;font-size:16px}
+.chart-video-row{display:flex;gap:12px;align-items:stretch}
+.chart-video-row>.card{flex:1;min-width:0}
+.chart-video-row>.card:last-child{display:flex;flex-direction:column}
+.chart-video-row>.card:last-child .video-container{flex:1;height:auto;min-height:240px}
+.chart-fields-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px 12px;align-items:end;margin-bottom:8px}
+.chart-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.chart-field>span{font-size:11px;color:#9a9fa4;text-transform:uppercase;letter-spacing:.4px}
+.chart-field select,.chart-field input{width:100%;box-sizing:border-box}
+.card{background:#252527;padding:14px;border-radius:10px;border:1px solid #3a3a3d;box-shadow:0 0 10px rgba(0,0,0,0.4);position:relative}
+.section-title, .card h3{color:#3fc6d6;margin:0 0 8px 0;font-size:16px}
 .controls-group{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
-.primary{background:#00f0ff;color:#041726;font-weight:700}
-.danger{background:#ff6b6b;color:#101018;font-weight:700}
+.primary{background:#3fc6d6;color:#041726;font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,0.35);transition:transform .1s ease,box-shadow .1s ease,filter .1s ease}
+.primary:hover{filter:brightness(1.1);box-shadow:0 2px 4px rgba(0,0,0,0.4)}
+.primary:active{transform:translateY(1px);box-shadow:0 1px 1px rgba(0,0,0,0.35)}
+.pill-toggle{border-radius:20px;padding:7px 16px;display:inline-flex;align-items:center;gap:7px}
+.icon-btn{width:32px;height:32px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.pause-btn.is-paused{background:#d9a044}
+.danger{background:#e07575;color:#101018;font-weight:700}
+#firmwareInput{background:#3a3a3d;color:#9a9fa4;border:1px solid #454549;border-radius:6px;padding:7px 8px;font-family:'Inter',sans-serif;font-size:13px;box-sizing:border-box}
+#firmwareInput::file-selector-button{background:#3fc6d6;color:#041726;font-weight:700;border:none;border-radius:5px;padding:6px 12px;margin-right:10px;cursor:pointer;transition:background .15s ease}
+#firmwareInput::file-selector-button:hover{background:#6fd4e0}
+#firmwareInput:disabled{opacity:.5;cursor:not-allowed}
+#firmwareInput:disabled::file-selector-button{cursor:not-allowed}
 #progressBar{height:10px;background:#222;border-radius:6px;overflow:hidden;border:1px solid #333}
-#progress{height:100%;width:0;background:linear-gradient(90deg,rgba(0,240,255,0.8),rgba(0,255,127,0.6));transition:width 0.25s}
+#progress{height:100%;width:0;background:linear-gradient(90deg,rgba(63, 198, 214,0.8),rgba(0,255,127,0.6));transition:width 0.25s}
 #dynamicControls{display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto} /* limit height and allow vertical scroll */
 .control-row{display:flex;gap:8px;align-items:center}
 .control-row label{min-width:90px}
-.small-input{padding:6px;border-radius:6px;border:none;background:#3d3d52;color:#00f0ff}
+.small-input{padding:6px;border-radius:6px;border:none;background:#3a3a3d;color:#3fc6d6}
 #mainChart{width:100%;height:320px}
-.video-container{position:relative;height:300px;background:#000;border-radius:8px;overflow:hidden;border:3px solid #00f0ff;--zoom-factor:1;--pan-x:0;--pan-y:0;transform-origin:center center}
+.video-container{position:relative;height:300px;background:#000;border-radius:8px;overflow:hidden;border:1px solid #454549;--zoom-factor:1;--pan-x:0;--pan-y:0;transform-origin:center center}
 .video-container img, .video-container video{width:100%;height:100%;object-fit:cover;transform:scale(var(--zoom-factor)) translate(var(--pan-x), var(--pan-y));transition:transform 0.1s ease}
-.toggle-btn{position:absolute;bottom:12px;right:12px;padding:8px 10px;border-radius:6px;background:#00f0ff;color:#041726;border:2px solid #00f0ff;font-weight:700}
-.small-toggle{position:absolute;bottom:12px;left:12px;padding:6px 8px;border-radius:6px;background:#ff6b6b;color:#101018;border:2px solid #ff6b6b;font-weight:700}
-.zoom-btn{position:absolute;top:12px;right:12px;padding:6px 10px;border-radius:6px;background:#00f0ff;color:#041726;border:2px solid #00f0ff;font-size:16px;font-weight:700;cursor:pointer}
-.zoom-btn.minus{right:60px}
-.zoom-btn.reset{right:100px;background:#f39c12;color:#101018;border:2px solid #f39c12}
-.zoom-btn.expand{position:absolute;top:12px;right:140px}
-.label-muted{font-size:12px;color:#9aaab4;margin-left:6px}
+/* Video overlay controls — hidden until hover/focus, like a normal video player,
+   so the feed itself isn't cluttered with always-on buttons. */
+.video-controls-overlay{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;padding:10px;pointer-events:none;opacity:0;transition:opacity .18s ease}
+.video-container:hover .video-controls-overlay,.video-container:focus-within .video-controls-overlay{opacity:1}
+.video-controls-top{display:flex;gap:6px;justify-content:flex-end;pointer-events:auto}
+.video-controls-bottom{display:flex;justify-content:space-between;align-items:center;pointer-events:auto}
+.vid-btn{width:32px;height:32px;border-radius:50%;background:rgba(4,23,38,0.8);color:#3fc6d6;border:1px solid #3fc6d6;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s ease,color .15s ease}
+.vid-btn:hover{background:#3fc6d6;color:#041726}
+.vid-btn-lg{width:38px;height:38px;font-size:15px}
+.label-muted{font-size:12px;color:#9a9fa4;margin-left:6px}
 .readout-value{font-family:'Roboto Mono',monospace;font-size:16px;color:#00ff7f;background:#101018;padding:4px 8px;border-radius:4px;min-width:100px;text-align:right;}
-.readout-unit{color:#9aaab4;font-size:13px}
-.readout-unit .katex{color:#9aaab4}
+.readout-unit{color:#9a9fa4;font-size:13px}
+.readout-unit .katex{color:#9a9fa4}
 .serial-slot{border:1px solid #333;border-radius:8px;padding:10px;margin-bottom:10px}
 .serial-slot:last-child{margin-bottom:0}
-.serial-slot-label{font-weight:700;margin-bottom:6px;color:#00f0ff}
+.serial-slot-label{font-weight:700;margin-bottom:6px;color:#3fc6d6}
 .slot-feedback{font-family:'Roboto Mono',monospace;background:#000;color:#00ff7f;padding:8px;height:140px;overflow:auto;border:1px solid #00ff7f;white-space:pre-wrap;font-size:12px}
 /* dropdown styling */
-.var-dropdown{display:none;position:absolute;top:38px;left:0;background:#1e1e2f;border:1px solid #00f0ff55;border-radius:8px;box-shadow:0 0 10px rgba(0,255,255,0.3);z-index:10;min-width:140px;max-height:260px;overflow:auto}
-.var-dropdown .item{padding:8px 10px;cursor:pointer;border-bottom:1px solid #00f0ff22;color:#00f0ff}
-.var-dropdown .item:hover{background:#00f0ff22}
+.var-dropdown{display:none;position:absolute;top:38px;left:0;background:#1e1e21;border:1px solid #454549;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.45);z-index:10;min-width:140px;max-height:260px;overflow:auto}
+.var-dropdown .item{padding:8px 10px;cursor:pointer;border-bottom:1px solid #3fc6d622;color:#3fc6d6}
+.var-dropdown .item:hover{background:#3fc6d622}
 /* Dynamic-control add dialog */
 .control-dialog-overlay{position:fixed;inset:0;background:rgba(4,6,15,0.65);display:flex;align-items:center;justify-content:center;z-index:2000;animation:cdFadeIn .12s ease-out}
 @keyframes cdFadeIn{from{opacity:0}to{opacity:1}}
-.control-dialog-box{background:#252538;border:1px solid #3d3d52;border-radius:12px;padding:22px 24px;width:340px;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,0.55)}
-.control-dialog-box h3{margin:0 0 16px 0;color:#00f0ff;font-size:16px}
+.control-dialog-box{background:#252527;border:1px solid #3a3a3d;border-radius:12px;padding:22px 24px;width:340px;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,0.55)}
+.control-dialog-box h3{margin:0 0 16px 0;color:#3fc6d6;font-size:16px}
 .control-dialog-row{margin-bottom:13px;display:flex;flex-direction:column;gap:5px}
-.control-dialog-row label{font-size:12px;color:#9aaab4;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
-.control-dialog-row input,.control-dialog-row select{padding:9px 10px;border-radius:6px;border:1px solid #3d3d52;background:#1c1c2b;color:#00f0ff;font-size:14px;font-family:'Roboto Mono',monospace}
-.control-dialog-row input:focus,.control-dialog-row select:focus{outline:none;border-color:#00f0ff;box-shadow:0 0 0 2px #00f0ff33}
+.control-dialog-row label{font-size:12px;color:#9a9fa4;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.control-dialog-row input,.control-dialog-row select{padding:9px 10px;border-radius:6px;border:1px solid #3a3a3d;background:#1c1c1f;color:#3fc6d6;font-size:14px;font-family:'Roboto Mono',monospace}
+.control-dialog-row input:focus,.control-dialog-row select:focus{outline:none;border-color:#3fc6d6;box-shadow:0 0 0 2px #3fc6d633}
 .control-dialog-hint{font-size:11px;color:#6d7a85}
 .control-dialog-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
 .control-dialog-btns button{padding:8px 16px}
-.control-dialog-cancel{background:#3d3d52;color:#e0e0e0}
+.control-dialog-cancel{background:#3a3a3d;color:#e0e0e0}
 @media(max-width:900px){.container{flex-direction:column}.left-column{width:100%;order:2}.right-column{order:1}}
+@media(max-width:1100px){.chart-video-row{flex-direction:column}}
 /* small layout tweaks for the new button card */
 .left-controls-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .left-controls-row button{flex:1}
@@ -100,10 +123,10 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
 </div>
 
 <!-- Session Closed Overlay -->
-<div id="sessionClosed" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#1c1c2b; color:#e0e0e0; z-index:9999; align-items:center; justify-content:center; flex-direction:column; font-size:2em;">
+<div id="sessionClosed" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#1c1c1f; color:#e0e0e0; z-index:9999; align-items:center; justify-content:center; flex-direction:column; font-size:2em;">
   <h2>Session Closed</h2>
   <p>Book another slot to continue.</p>
-  <button onclick="window.location.href='{{ booking_page_url }}'" style="padding:10px 20px; background:#00f0ff; color:#041726; border:none; border-radius:6px; font-weight:700;">Go to My Bookings</button>
+  <button onclick="window.location.href='{{ booking_page_url }}'" style="padding:10px 20px; background:#3fc6d6; color:#041726; border:none; border-radius:6px; font-weight:700;"><i class="fas fa-calendar-check"></i> Go to My Bookings</button>
 </div>
 
 <div class="container">
@@ -120,11 +143,11 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
 
       <input id="firmwareInput" type="file" accept=".bin,.hex,.out,.txt,.dfu" style="width:100%;margin-bottom:8px" {{ 'disabled' if not ui_config.controls.flash_firmware }}>
       <div style="display:flex;gap:8px;margin-bottom:8px">
-        <button class="primary" id="flashBtn" {{ 'disabled' if not ui_config.controls.flash_firmware }}>Flash Firmware</button>
-        <button id="cancelFlash" style="background:#444;color:#fff;border-radius:6px;padding:8px 10px">Cancel</button>
+        <button class="primary" id="flashBtn" {{ 'disabled' if not ui_config.controls.flash_firmware }}><i class="fas fa-arrow-up-from-bracket"></i> Flash Firmware</button>
+        <button id="cancelFlash" style="background:#444;color:#fff;border-radius:6px;padding:8px 10px"><i class="fas fa-xmark"></i> Cancel</button>
       </div>
       <div id="progressBar"><div id="progress"></div></div>
-      <div id="flashStatus" style="margin-top:8px;font-family:Roboto Mono;color:#9aaab4">Status: idle</div>
+      <div id="flashStatus" style="margin-top:8px;font-family:Roboto Mono;color:#9a9fa4">Status: idle</div>
     </div>
 
     <!-- NEW: Factory reset / View SOP card (placed between Firmware and Serial monitor) -->
@@ -132,15 +155,15 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
       <h3>Quick Actions</h3>
       <div class="left-controls-row" style="margin-bottom:8px">
         <!-- Factory Reset (red danger button as requested - option 1) -->
-        <button id="factoryResetBtn" class="danger" {{ 'disabled' if not ui_config.controls.factory_reset }}>Factory Reset</button>
+        <button id="factoryResetBtn" class="danger" {{ 'disabled' if not ui_config.controls.factory_reset }}><i class="fas fa-arrow-rotate-left"></i> Factory Reset</button>
 
         <!-- View / Download SOP -->
-        <button id="viewSopBtn" class="primary">View Manual</button>
+        <button id="viewSopBtn" class="primary"><i class="fas fa-book"></i> View Manual</button>
 
         <!-- Power Supply Control -->
-        <button id="powerSupplyBtn" class="primary" style="background:#2ecc71; color:#1c1c2b" {{ 'disabled' if not ui_config.controls.power_supply }}>Power Supply OFF</button>
+        <button id="powerSupplyBtn" class="primary" style="background:#4fb583; color:#1c1c1f" {{ 'disabled' if not ui_config.controls.power_supply }}><i class="fas fa-power-off"></i> Power Supply OFF</button>
       </div>
-      <div style="font-size:13px;color:#9aaab4"></div>
+      <div style="font-size:13px;color:#9a9fa4"></div>
     </div>
 
     <div class="card" id="serialMonitorCard" style="{{ 'display:none' if not ui_config.controls.serial_monitor_section }}">
@@ -151,7 +174,7 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
         <div class="serial-slot-label">{{ p.label }}</div>
         <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           {% if p.port %}
-          <span class="note" style="color:#9aaab4;font-size:13px;align-self:center">{{ p.port }}</span>
+          <span class="note" style="color:#9a9fa4;font-size:13px;align-self:center">{{ p.port }}</span>
           {% endif %}
           {# Baud is always student-adjustable, even when the admin has fixed the port itself. #}
           {% set standard_bauds = [300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400] %}
@@ -164,17 +187,17 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
           <input class="slot-custom-baud small-input" placeholder="Custom" style="width:80px;{{ 'display:none' if p.baud in standard_bauds }}" value="{{ p.baud if p.baud not in standard_bauds else '' }}">
           {% if not p.port %}
           <select class="slot-port small-input" style="width:140px"></select>
-          <button class="slot-refresh" style="background:#333;color:#fff;border-radius:6px;padding:6px 8px">Refresh</button>
+          <button class="slot-refresh" style="background:#333;color:#fff;border-radius:6px;padding:6px 8px" title="Refresh ports"><i class="fas fa-rotate"></i></button>
           {% endif %}
         </div>
         <div style="display:flex;gap:8px;margin-bottom:8px">
-          <button class="slot-connect" style="background:#2ecc71;color:#fff" {{ 'disabled' if not ui_config.controls.serial_connect }}>Connect</button>
-          <button class="slot-reset" style="background:#f39c12;color:#101018;border-radius:6px" {{ 'disabled' if not ui_config.controls.serial_connect }}>Reset MCU</button>
-          <button class="slot-clear" style="background:#333;color:#fff;border-radius:6px">Clear</button>
+          <button class="slot-connect" style="background:#4fb583;color:#fff" {{ 'disabled' if not ui_config.controls.serial_connect }}><i class="fas fa-plug"></i> Connect</button>
+          <button class="slot-reset" style="background:#d9a044;color:#101018;border-radius:6px" {{ 'disabled' if not ui_config.controls.serial_connect }}><i class="fas fa-arrow-rotate-left"></i> Reset MCU</button>
+          <button class="slot-clear" style="background:#333;color:#fff;border-radius:6px" title="Clear log"><i class="fas fa-broom"></i></button>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:8px">
-          <input class="slot-cmd" placeholder="Type command and press Send" style="flex:1;padding:6px;border-radius:6px;border:none;background:#3d3d52;color:#00f0ff">
-          <button class="primary slot-send">Send</button>
+          <input class="slot-cmd" placeholder="Type command and press Send" style="flex:1;padding:6px;border-radius:6px;border:none;background:#3a3a3d;color:#3fc6d6">
+          <button class="primary slot-send" title="Send"><i class="fas fa-paper-plane"></i></button>
         </div>
         <div class="slot-feedback">waiting for device...</div>
       </div>
@@ -186,85 +209,86 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
       <h3>Dynamic Controls</h3>
       <div style="display:flex;gap:8px;margin-bottom:8px">
         <div style="position:relative;display:inline-block">
-          <button id="addSlider" class="primary" {{ 'disabled' if not ui_config.controls.student_controls_addition }}>Add Slider</button>
+          <button id="addSlider" class="primary" {{ 'disabled' if not ui_config.controls.student_controls_addition }}><i class="fas fa-sliders"></i> Add Slider</button>
         </div>
 
         <div style="position:relative;display:inline-block">
-          <button id="addButton" class="primary" {{ 'disabled' if not ui_config.controls.student_controls_addition }}>Add Button</button>
+          <button id="addButton" class="primary" {{ 'disabled' if not ui_config.controls.student_controls_addition }}><i class="fas fa-square-plus"></i> Add Button</button>
         </div>
 
         <div style="position:relative;display:inline-block">
-          <button id="addReadout" class="primary" {{ 'disabled' if not ui_config.controls.student_controls_addition }}>Add Readout ⏷</button>
+          <button id="addReadout" class="primary" {{ 'disabled' if not ui_config.controls.student_controls_addition }}><i class="fas fa-gauge"></i> Add Readout <i class="fas fa-chevron-down" style="font-size:10px"></i></button>
           <div id="varDropdown" class="var-dropdown"></div>
         </div>
       </div>
       <div id="dynamicControls"></div>
-      <div style="margin-top:8px;color:#9aaab4;font-size:13px">Click the small ❌ on a control to remove it.</div>
+      <div style="margin-top:8px;color:#9a9fa4;font-size:13px">Click a control's remove button to delete it.</div>
     </div>
   </div>
 
   <div class="right-column">
+  <div class="chart-video-row">
     <div class="card" id="chartCard" style="{{ 'display:none' if not (ui_config.controls.serial_plotter or ui_config.controls.oscilloscope) }}">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:10px;">
         <h3 style="margin:0;">Real-time Sensor Data Chart</h3>
         <div style="display:flex; gap:8px; align-items:center;">
           <span style="font-size:11px; color:#888; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px;">Current View:</span>
-          <select id="mainUiMode" class="small-input" style="background: #00f0ff; color: #000; font-weight: bold; width: 140px;">
+          <select id="mainUiMode" class="small-input" style="background: #3fc6d6; color: #000; font-weight: bold; width: 140px;">
             {% if ui_config.controls.serial_plotter %}<option value="plotter" {{ 'selected' if ui_config.defaults.main_view == 'plotter' }}>Serial Plotter</option>{% endif %}
             {% if ui_config.controls.oscilloscope %}<option value="oscilloscope" {{ 'selected' if ui_config.defaults.main_view == 'oscilloscope' }}>Oscilloscope</option>{% endif %}
           </select>
           <!-- Buttons moved inside flex container to avoid overlap -->
           <div id="mainZoomButtons" style="display:flex; gap:4px;">
-            <button id="chartZoomReset" style="background:#f39c12; color:#101018; font-weight:700; padding:4px 8px; border-radius:4px;" title="Reset Zoom">■</button>
-            <button id="chartZoomOut" style="background:#00f0ff; color:#041726; font-weight:700; padding:4px 8px; border-radius:4px;" title="Zoom Out">-</button>
-            <button id="chartZoomIn" style="background:#00f0ff; color:#041726; font-weight:700; padding:4px 8px; border-radius:4px;" title="Zoom In">+</button>
+            <button id="chartZoomReset" style="background:#d9a044; color:#101018; font-weight:700; padding:6px 9px; border-radius:4px; display:inline-flex; align-items:center;" title="Reset Zoom"><i class="fas fa-arrows-rotate"></i></button>
+            <button id="chartZoomOut" style="background:#3fc6d6; color:#041726; font-weight:700; padding:6px 9px; border-radius:4px; display:inline-flex; align-items:center;" title="Zoom Out"><i class="fas fa-magnifying-glass-minus"></i></button>
+            <button id="chartZoomIn" style="background:#3fc6d6; color:#041726; font-weight:700; padding:6px 9px; border-radius:4px; display:inline-flex; align-items:center;" title="Zoom In"><i class="fas fa-magnifying-glass-plus"></i></button>
           </div>
-          <button id="expandChartBtn" style="background:#00f0ff; color:#041726; font-weight:700; padding:4px 8px; border-radius:4px;" title="Open Chart in New Tab">[ ]</button>
+          <button id="expandChartBtn" style="background:#3fc6d6; color:#041726; font-weight:700; padding:6px 9px; border-radius:4px; display:inline-flex; align-items:center;" title="Open Chart in New Tab"><i class="fas fa-expand"></i></button>
         </div>
       </div>
       <!-- Removed original absolute buttons -->
       <!-- Wrapper for Plotter-only controls -->
       <div id="mainPlotterControls">
-        <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-          <label style="display:flex;gap:6px;align-items:center">Port
-            <select id="chartPortSelect" class="small-input" style="width:140px;margin-left:6px" {{ 'disabled' if not ui_config.defaults.serial_plotter_allow_port_switch }}>
+        <div class="chart-fields-row">
+          <label class="chart-field"><span>Port</span>
+            <select id="chartPortSelect" class="small-input" {{ 'disabled' if not ui_config.defaults.serial_plotter_allow_port_switch }}>
               {% for p in ui_config.serial_ports %}{% if p.student_visible or p.plotter_visible %}
               <option value="{{ p.id }}" {{ 'selected' if p.id == ui_config.defaults.serial_plotter_default_port_id }}>{{ p.label }}</option>
               {% endif %}{% endfor %}
             </select>
           </label>
 
-          <label style="display:flex;gap:6px;align-items:center">X-Axis
-            <select id="xAxisFilter" class="small-input" style="width:140px;margin-left:6px">
+          <label class="chart-field"><span>X-Axis</span>
+            <select id="xAxisFilter" class="small-input">
               <option value="time">Time (s)</option><option value="samples">Samples</option>
             </select>
           </label>
 
-          <label style="display:flex;gap:6px;align-items:center">Y-Axis 1
-            <select id="yAxisFilter1" class="small-input" style="width:140px;margin-left:6px"></select>
+          <label class="chart-field"><span>Y-Axis 1</span>
+            <select id="yAxisFilter1" class="small-input"></select>
           </label>
 
-          <label style="display:flex;gap:6px;align-items:center">Y-Axis 2
-            <select id="yAxisFilter2" class="small-input" style="width:140px;margin-left:6px">
+          <label class="chart-field"><span>Y-Axis 2</span>
+            <select id="yAxisFilter2" class="small-input">
               <option value="">(Disabled)</option>
             </select>
           </label>
-          <button id="exportCSV" style="background:#444;color:#fff;border-radius:6px;padding:8px 10px">Export CSV</button>
+          <button id="exportCSV" style="background:#444;color:#fff;border-radius:6px;padding:8px 10px;height:34px">Export CSV</button>
         </div>
 
         <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-          <label>Scaling: <button id="mainScalingToggle" class="primary">Auto</button></label>
-          <div id="mainManualControls" style="display:none; gap:8px; display:flex; align-items:center;">
+          <label style="display:flex;align-items:center;gap:8px">Scaling: <button id="mainScalingToggle" class="primary pill-toggle"><i class="fas fa-wand-magic-sparkles"></i> Auto</button></label>
+          <div id="mainManualControls" style="display:flex; gap:8px; align-items:center; visibility:hidden;">
             <label>Y1 Max: <input type="number" id="mainY1Max" class="small-input" value="100" min="0" step="10"></label>
-            <button id="mainY1Plus" class="primary">+</button>
-            <button id="mainY1Minus" class="primary">-</button>
+            <button id="mainY1Plus" class="primary icon-btn" title="Increase Y1 max"><i class="fas fa-plus"></i></button>
+            <button id="mainY1Minus" class="primary icon-btn" title="Decrease Y1 max"><i class="fas fa-minus"></i></button>
             <label>Y2 Max: <input type="number" id="mainY2Max" class="small-input" value="100" min="0" step="10"></label>
-            <button id="mainY2Plus" class="primary">+</button>
-            <button id="mainY2Minus" class="primary">-</button>
+            <button id="mainY2Plus" class="primary icon-btn" title="Increase Y2 max"><i class="fas fa-plus"></i></button>
+            <button id="mainY2Minus" class="primary icon-btn" title="Decrease Y2 max"><i class="fas fa-minus"></i></button>
           </div>
         </div>
         <div style="display:flex;gap:12px;margin-top:8px;align-items:center">
-          <button id="pauseChart" class="primary">Pause Chart</button>
+          <button id="pauseChart" class="primary pill-toggle pause-btn"><i class="fas fa-pause"></i> Pause Chart</button>
           <div class="label-muted" id="chartStatus">Running — last update: --</div>
         </div>
       </div>
@@ -302,8 +326,8 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
             <option value="5.0">5x</option>
           </select>
         </label>
-        <button id="mainOscAutoBtn" class="primary" style="padding:4px 8px;">Auto</button>
-        <button id="mainOscFreezeBtn" class="primary" style="padding:4px 8px; background:#2ecc71;">Freeze</button>
+        <button id="mainOscAutoBtn" class="primary" style="padding:4px 8px;"><i class="fas fa-wand-magic-sparkles"></i> Auto</button>
+        <button id="mainOscFreezeBtn" class="primary" style="padding:4px 8px; background:#4fb583;"><i class="fas fa-snowflake"></i> Freeze</button>
         <div id="mainOscStats" style="font-family:monospace; font-size:12px; color:#00ff7f; display:flex; gap:10px;">
           <span>Freq: <span id="mainOscFreq">-</span></span>
           <span>Vpp: <span id="mainOscVpp">-</span></span>
@@ -321,15 +345,22 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
       <div class="video-container">
         <img id="videoFeed" alt="camera">
     <audio id="audioFeed" autoplay></audio>
-        <button id="expandVideoBtn" class="zoom-btn expand" title="Open Video in New Tab">[ ]</button>
-        <button id="zoomReset" class="zoom-btn reset">■</button>
-        <button id="zoomOut" class="zoom-btn minus">-</button>
-        <button id="zoomIn" class="zoom-btn">+</button>
-        <button id="toggleAudio" class="toggle-btn">Start Audio</button>
-        <button id="toggleVideo" class="small-toggle">Video OFF</button>
+        <div class="video-controls-overlay">
+          <div class="video-controls-top">
+            <button id="expandVideoBtn" class="vid-btn" title="Open in new tab"><i class="fas fa-expand"></i></button>
+            <button id="zoomReset" class="vid-btn" title="Reset zoom"><i class="fas fa-arrows-rotate"></i></button>
+            <button id="zoomOut" class="vid-btn" title="Zoom out"><i class="fas fa-magnifying-glass-minus"></i></button>
+            <button id="zoomIn" class="vid-btn" title="Zoom in"><i class="fas fa-magnifying-glass-plus"></i></button>
+          </div>
+          <div class="video-controls-bottom">
+            <button id="toggleVideo" class="vid-btn vid-btn-lg" title="Turn video off"><i class="fas fa-pause"></i></button>
+            <button id="toggleAudio" class="vid-btn vid-btn-lg" title="Start audio"><i class="fas fa-volume-xmark"></i></button>
+          </div>
+        </div>
       </div>
-      <div style="margin-top:8px;color:#9aaab4"></div>
+      <div style="margin-top:8px;color:#9a9fa4"></div>
     </div>
+  </div>
   </div>
 </div>
 
@@ -510,8 +541,8 @@ const mainOscFreezeBtn = document.getElementById('mainOscFreezeBtn');
 mainOscFreezeBtn.addEventListener('click', () => {
   mainOscIsFrozen = !mainOscIsFrozen;
   socket.emit('update_osc_settings', { freeze: mainOscIsFrozen });
-  mainOscFreezeBtn.innerText = mainOscIsFrozen ? 'Frozen' : 'Freeze';
-  mainOscFreezeBtn.style.background = mainOscIsFrozen ? '#ff6b6b' : '#2ecc71';
+  mainOscFreezeBtn.innerHTML = mainOscIsFrozen ? '<i class="fas fa-snowflake"></i> Frozen' : '<i class="fas fa-snowflake"></i> Freeze';
+  mainOscFreezeBtn.style.background = mainOscIsFrozen ? '#e07575' : '#4fb583';
 });
 
 socket.on('osc_settings_sync', (data) => {
@@ -558,8 +589,8 @@ powerSupplyBtn.addEventListener('click', async () => {
     
     if (result.status === newState) {
       powerSupplyState = newState;
-      powerSupplyBtn.innerText = `Power Supply ${newState.toUpperCase()}`;
-      powerSupplyBtn.style.background = newState === 'on' ? '#ff6b6b' : '#2ecc71';
+      powerSupplyBtn.innerHTML = `<i class="fas fa-power-off"></i> Power Supply ${newState.toUpperCase()}`;
+      powerSupplyBtn.style.background = newState === 'on' ? '#e07575' : '#4fb583';
       console.log(`[power] Power supply turned ${newState}`);
     } else {
       console.log(`[power] Error turning power ${newState}: ${result.message || 'Unknown error'}`);
@@ -607,14 +638,14 @@ function doSlotConnect(slot){
   // Baud is always student-adjustable, even on a port whose device path the admin fixed.
   const baud = (slot.baudSelect.value === 'custom') ? parseInt(slot.customBaud.value || '115200') : parseInt(slot.baudSelect.value);
   slot.connectBtn.disabled = true;
-  slot.connectBtn.textContent = 'Connecting...';
+  slot.connectBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
   slotFeedbackAdd(slot, `Connecting to ${port}@${baud} ...`);
   socket.emit('connect_serial', { conn_id: slot.connId, port, baud });
   if (slot.connectTimeoutHandle) clearTimeout(slot.connectTimeoutHandle);
   slot.connectTimeoutHandle = setTimeout(() => {
     slotFeedbackAdd(slot, '⚠️ Serial connect timed out (no response).');
     slot.connectBtn.disabled = false;
-    slot.connectBtn.textContent = 'Connect';
+    slot.connectBtn.innerHTML = '<i class="fas fa-plug"></i> Connect';
   }, 6000);
 }
 
@@ -816,9 +847,9 @@ socket.on('serial_status', (info) => {
   if (info.status === 'connected') {
     slot.connected = true;
     slot.connectBtn.disabled = !slot.allowDisconnect;
-    slot.connectBtn.textContent = slot.allowDisconnect ? 'Disconnect' : 'Connected';
+    slot.connectBtn.innerHTML = slot.allowDisconnect ? '<i class="fas fa-plug-circle-xmark"></i> Disconnect' : '<i class="fas fa-check"></i> Connected';
     slot.connectBtn.title = slot.allowDisconnect ? '' : 'Disconnect locked by lab administrator';
-    slot.connectBtn.style.background = '#ff6b6b';
+    slot.connectBtn.style.background = '#e07575';
     slot.connectBtn.style.color = '#fff';
     slotFeedbackAdd(slot, `✅ Connected: ${info.port}@${info.baud}`);
     requestPorts(); // refresh port lists again (other slots may need updating)
@@ -826,15 +857,15 @@ socket.on('serial_status', (info) => {
   } else if (info.status === 'error') {
     slot.connected = false;
     slot.connectBtn.disabled = false;
-    slot.connectBtn.textContent = 'Connect';
-    slot.connectBtn.style.background = '#2ecc71';
+    slot.connectBtn.innerHTML = '<i class="fas fa-plug"></i> Connect';
+    slot.connectBtn.style.background = '#4fb583';
     slot.connectBtn.style.color = '#fff';
     slotFeedbackAdd(slot, `🔴 Serial error: ${info.message || ''}`);
   } else {
     slot.connected = false;
     slot.connectBtn.disabled = false;
-    slot.connectBtn.textContent = 'Connect';
-    slot.connectBtn.style.background = '#2ecc71';
+    slot.connectBtn.innerHTML = '<i class="fas fa-plug"></i> Connect';
+    slot.connectBtn.style.background = '#4fb583';
     slot.connectBtn.style.color = '#fff';
     slotFeedbackAdd(slot, `🔴 Disconnected`);
   }
@@ -963,7 +994,7 @@ function createControlElement(cfg){
   if(cfg.locked){
     wrapper.classList.add('locked-control');
     wrapper.dataset.requiredId = cfg.requiredId || '';
-    wrapper.style.borderColor = '#00f0ff88';
+    wrapper.style.borderColor = '#3fc6d688';
   }
 
   const content = document.createElement('div');
@@ -982,8 +1013,9 @@ function createControlElement(cfg){
   let removeBtn = null;
   if(!cfg.locked){
     removeBtn = document.createElement('button');
-    removeBtn.innerText='❌';
-    removeBtn.style.marginLeft='8px';
+    removeBtn.innerHTML = '<i class="fas fa-xmark"></i>';
+    removeBtn.title = 'Remove control';
+    removeBtn.style.cssText = 'width:22px;height:22px;padding:0;border-radius:50%;border:none;background:#e07575;color:#1c1c1f;font-size:11px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-left:8px;';
     removeBtn.onclick = () => { wrapper.remove(); saveLayoutToStorage(); };
   }
 
@@ -1284,7 +1316,7 @@ const knownDataKeys = new Set();
 const chart = new Chart(chartCtx, {
   type: 'line',
   data: { labels: [], datasets: [
-    { label: 'Series 1', data: [], borderColor: '#00f0ff', borderWidth: 2, pointRadius: 0, fill: false, yAxisID: 'y' },
+    { label: 'Series 1', data: [], borderColor: '#3fc6d6', borderWidth: 2, pointRadius: 0, fill: false, yAxisID: 'y' },
     { label: 'Series 2', data: [], borderColor: '#00ff7f', borderWidth: 2, pointRadius: 0, fill: false, yAxisID: 'y1', hidden: true }
   ]},
   options: {
@@ -1815,7 +1847,11 @@ document.getElementById('expandVideoBtn').addEventListener('click', () => {
 });
 
 /* ----------------- Pause chart ----------------- */
-pauseChartBtn.addEventListener('click', () => { running = !running; pauseChartBtn.innerText = running ? 'Pause Chart' : 'Resume Chart'; });
+pauseChartBtn.addEventListener('click', () => {
+  running = !running;
+  pauseChartBtn.innerHTML = running ? '<i class="fas fa-pause"></i> Pause Chart' : '<i class="fas fa-play"></i> Resume Chart';
+  pauseChartBtn.classList.toggle('is-paused', !running);
+});
 
 /* Video feed toggle */
 const videoFeed = document.getElementById('videoFeed');
@@ -1828,10 +1864,12 @@ const toggleVideoBtn = document.getElementById('toggleVideo');
 toggleVideoBtn.addEventListener('click', () => {
   if(videoFeed.style.display === 'none'){
     videoFeed.style.display = 'block';
-    toggleVideoBtn.innerText = 'Video OFF';
+    toggleVideoBtn.innerHTML = '<i class="fas fa-pause"></i>';
+    toggleVideoBtn.title = 'Turn video off';
   } else {
     videoFeed.style.display = 'none';
-    toggleVideoBtn.innerText = 'Video ON';
+    toggleVideoBtn.innerHTML = '<i class="fas fa-play"></i>';
+    toggleVideoBtn.title = 'Turn video on';
   }
 });
 
@@ -1843,7 +1881,7 @@ async function startAudio() {
     audioStarting = true;
     const toggleBtn = document.getElementById('toggleAudio');
     toggleBtn.disabled = true;
-    toggleBtn.innerText = 'Starting...';
+    toggleBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
     try {
         audioPC = new RTCPeerConnection();
@@ -1881,7 +1919,8 @@ async function startAudio() {
         await audioPC.setRemoteDescription(answer);
 
         toggleBtn.disabled = false;
-        toggleBtn.innerText = 'Stop Audio';
+        toggleBtn.innerHTML = '<i class="fas fa-volume-high"></i>';
+        toggleBtn.title = 'Mute audio';
         audioStarting = false;
     } catch (error) {
         console.error('Failed to start audio:', error);
@@ -1899,7 +1938,8 @@ function stopAudio() {
     document.getElementById('audioFeed').srcObject = null;
     const toggleBtn = document.getElementById('toggleAudio');
     toggleBtn.disabled = false;
-    toggleBtn.innerText = 'Start Audio';
+    toggleBtn.innerHTML = '<i class="fas fa-volume-xmark"></i>';
+    toggleBtn.title = 'Start audio';
 }
 
 const audioFeed = document.getElementById('audioFeed');
@@ -1922,11 +1962,29 @@ const zoomResetBtn = document.getElementById('zoomReset');
 let currentZoom = 1;
 let panX = 0;
 let panY = 0;
-const minZoom = 0.5;
+const minZoom = 1; // never zoom out past "filled" — anything below 1 just exposes the container's black background as borders
 const maxZoom = 5;
 const zoomStep = 0.1;
 
 function updateZoom() {
+  // Clamp panning to the zoomed image's own extent — without this, dragging
+  // (or repeated wheel-zooming back toward 1x while still panned) can push
+  // the image past its edge and expose the container's black background on
+  // the opposite side, exactly like the un-capped zoom-out used to.
+  // transform is `scale(currentZoom) translate(panX, panY)` — translate is
+  // specified in local (pre-scale) units that the outer scale() then also
+  // scales, so the max local-unit offset that keeps the scaled edge flush
+  // with the container edge is (containerSize * (zoom-1)) / (2 * zoom).
+  if (currentZoom <= 1) {
+    panX = 0;
+    panY = 0;
+  } else {
+    const rect = videoContainer.getBoundingClientRect();
+    const maxPanX = (rect.width * (currentZoom - 1)) / (2 * currentZoom);
+    const maxPanY = (rect.height * (currentZoom - 1)) / (2 * currentZoom);
+    panX = Math.max(-maxPanX, Math.min(maxPanX, panX));
+    panY = Math.max(-maxPanY, Math.min(maxPanY, panY));
+  }
   videoContainer.style.setProperty('--zoom-factor', currentZoom);
   videoContainer.style.setProperty('--pan-x', panX + 'px');
   videoContainer.style.setProperty('--pan-y', panY + 'px');
@@ -2054,8 +2112,15 @@ function mainUpdateScaling() {
 
 document.getElementById('mainScalingToggle').addEventListener('click', () => {
   mainIsAutoScaling = !mainIsAutoScaling;
-  document.getElementById('mainScalingToggle').textContent = mainIsAutoScaling ? 'Auto' : 'Manual';
-  document.getElementById('mainManualControls').style.display = mainIsAutoScaling ? 'none' : 'flex';
+  document.getElementById('mainScalingToggle').innerHTML = mainIsAutoScaling
+    ? '<i class="fas fa-wand-magic-sparkles"></i> Auto'
+    : '<i class="fas fa-sliders"></i> Manual';
+  // visibility, not display: keeps this row's space reserved in the layout
+  // so toggling Auto/Manual never changes #chartCard's height — with display
+  // none/flex it did, and since the chart and video cards are stretched to
+  // match heights in .chart-video-row, that resize dragged the video along
+  // with it every time you switched scaling modes.
+  document.getElementById('mainManualControls').style.visibility = mainIsAutoScaling ? 'hidden' : 'visible';
   mainUpdateScaling();
 });
 
@@ -2095,29 +2160,29 @@ powerSavePopup.style.cssText = `
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: #1c1c2b;
+  background: #1c1c1f;
   color: #e0e0e0;
   padding: 24px;
   border-radius: 10px;
-  border: 2px solid #00f0ff;
-  box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
+  border: 1px solid #454549;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5);
   z-index: 10000;
   text-align: center;
   font-size: 18px;
   max-width: 400px;
 `;
 powerSavePopup.innerHTML = `
-  <h2 style="color: #ff6b6b; margin: 0 0 16px 0;">⚠️ Power Saving Alert</h2>
+  <h2 style="color: #e07575; margin: 0 0 16px 0;"><i class="fas fa-triangle-exclamation"></i> Power Saving Alert</h2>
   <p style="margin: 0 0 24px 0;">Your session duration is very short (less than 5 seconds). The power supply will be automatically turned off to prevent unnecessary power waste.</p>
-  <button onclick="document.getElementById('powerSavePopup').style.display = 'none'" 
-          style="padding: 10px 20px; background: #00f0ff; color: #041726; border: none; border-radius: 6px; font-weight: 700; cursor: pointer;">
-    OK
+  <button onclick="document.getElementById('powerSavePopup').style.display = 'none'"
+          style="padding: 10px 20px; background: #3fc6d6; color: #041726; border: none; border-radius: 6px; font-weight: 700; cursor: pointer;">
+    <i class="fas fa-check"></i> OK
   </button>
 `;
 document.body.appendChild(powerSavePopup);
 
 if (!sessionKey) {
-  document.body.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100vh; background:#1c1c2b; color:#e0e0e0; font-size:2em;">Invalid Session. Please book a slot from My Bookings.<br><br><span style="font-size:0.5em;">Redirecting...</span></div><button onclick="window.location.href=\'' + BOOKING_PAGE_URL + '\'" style="padding:10px 20px; background:#00f0ff; color:#041726; border:none; border-radius:6px; font-weight:700;">Go to My Bookings</button>';
+  document.body.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100vh; background:#1c1c1f; color:#e0e0e0; font-size:2em;">Invalid Session. Please book a slot from My Bookings.<br><br><span style="font-size:0.5em;">Redirecting...</span></div><button onclick="window.location.href=\'' + BOOKING_PAGE_URL + '\'" style="padding:10px 20px; background:#3fc6d6; color:#041726; border:none; border-radius:6px; font-weight:700;"><i class="fas fa-calendar-check"></i> Go to My Bookings</button>';
   // Auto-redirect after 2 seconds
   setTimeout(function() {
     clearLayoutOnSessionEnd();

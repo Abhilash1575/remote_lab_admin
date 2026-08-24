@@ -1,0 +1,19 @@
+<header class="iken-topbar">
+    <a href="{{ url_for('index') }}" class="iken-brand">
+        <img src="{{ url_for('static', filename='img/iken-mark.png') }}" alt="IKEN">
+        <div class="iken-brand-text">
+            <h1>IKEN Remote Lab</h1>
+            <p>IISc Knowledge and E-Learning Network</p>
+        </div>
+    </a>
+    <nav class="iken-nav">
+        {% if current_user.is_authenticated %}
+            <a href="{{ url_for('index') }}" class="{{ 'active' if active == 'experiments' }}">Experiments</a>
+            <a href="{{ url_for('my_bookings') }}" class="{{ 'active' if active == 'bookings' }}">My bookings</a>
+            <a href="{{ url_for('profile') }}" class="{{ 'active' if active == 'account' }}">Account</a>
+            <a href="{{ url_for('logout') }}" class="iken-signout">Sign out</a>
+        {% else %}
+            <a href="{{ url_for('login') }}" class="active">Sign in</a>
+        {% endif %}
+    </nav>
+</header>

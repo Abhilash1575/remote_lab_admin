@@ -17,6 +17,7 @@ import secrets
 import requests
 import csv
 import io
+from collections import Counter
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from flask import Flask, send_from_directory, request, jsonify, render_template, abort, flash, redirect, url_for, Response, current_app, session
@@ -430,6 +431,96 @@ def get_lab_pi_ui_config(lab_pi_url):
     except Exception as e:
         print(f"[EXPERIMENT] Could not fetch ui-config from {lab_pi_url}: {e}")
         return FALLBACK_UI_CONFIG
+
+
+def _lab_pi_admin_api(lab_pi, method, path, json_body=None):
+    """Proxy an admin-config call to a Lab Pi's Tier-A JSON API (/api/admin/*)
+    so the Master's admin console can edit a Lab Pi's UI/layout config without
+    an admin ever visiting that Pi's own IP. Returns (ok, payload_or_error)."""
+    if not lab_pi.ip_address:
+        return False, "This Lab Pi has no IP address on file."
+    url = f"http://{lab_pi.ip_address}:10000{path}"
+    try:
+        response = requests.request(
+            method, url, json=json_body,
+            headers={'X-Master-Api-Key': MASTER_API_KEY}, timeout=5,
+        )
+        response.raise_for_status()
+        return True, response.json()
+    except Exception as e:
+        return False, f"Could not reach Lab Pi at {lab_pi.ip_address}: {e}"
+
+
+def _remap_port_id_by_label(port_id, source_ports, target_ports):
+    """A serial-port-profile id only means something on the Lab Pi that
+    minted it — each Pi generates its own ids independently, and the actual
+    device path behind a given label is different hardware per physical Pi.
+    So when copying a config that references a port (a required control's
+    portId, the default plotter port) to a different Lab Pi, re-resolve the
+    equivalent port there by matching label, never by copying the id as-is.
+    Returns (new_id_or_empty_string, warning_message_or_None)."""
+    if not port_id:
+        return '', None
+    source_label = next((p['label'] for p in source_ports if p['id'] == port_id), None)
+    if source_label is None:
+        return '', None
+    target_id = next((p['id'] for p in target_ports if p['label'] == source_label), None)
+    if target_id is None:
+        return '', f'no port labeled "{source_label}" on the target Lab Pi — cleared, set it manually'
+    return target_id, None
+
+
+def _control_to_rc_form(control):
+    """Translate a required-control object as returned by GET /api/admin/ui-config
+    (keys: type, label, portId, min, max, ...) into the rc_* field names
+    POST/PUT /api/admin/controls expects (same names admin_settings.html's
+    form posts) — the stored shape and the write API's input shape differ."""
+    form = {
+        'rc_type': control.get('type', ''),
+        'rc_label': control.get('label', ''),
+        'rc_port_id': control.get('portId', ''),
+    }
+    if control.get('type') == 'slider':
+        form.update({
+            'rc_min': control.get('min', 0),
+            'rc_max': control.get('max', 1023),
+            'rc_precision': control.get('precision', 0),
+            'rc_cmd_format': control.get('cmdFormat', '{value}'),
+        })
+    elif control.get('type') == 'button':
+        form.update({'rc_on_cmd': control.get('onCmd', '1'), 'rc_off_cmd': control.get('offCmd', '0')})
+    elif control.get('type') == 'readout':
+        form.update({
+            'rc_data_key': control.get('dataKey', ''),
+            'rc_unit': control.get('unit', ''),
+            'rc_decimals': control.get('decimals', ''),
+        })
+    return form
+
+
+def _ui_config_body_from_form(form):
+    """Build the POST /api/admin/ui-config body from the shared settings
+    form's fields. Shared by the plain Save action and by Copy-to (which
+    saves the source Lab Pi's current on-screen edits before copying them
+    onward — otherwise Copy would silently ship whatever was last saved to
+    disk, not whatever's checked in the browser right now)."""
+    all_keys = [k for k in (form.get('all_control_keys') or '').split(',') if k]
+    controls = {key: (form.get(f'control_{key}') == 'on') for key in all_keys}
+    required_prefixes = [
+        kw.strip() for kw in (form.get('serial_plotter_required_prefixes') or '').split(',')
+        if kw.strip()
+    ]
+    return {
+        'controls': controls,
+        'defaults': {
+            'main_view': form.get('main_view'),
+            'dynamic_controls_visible': form.get('dynamic_controls_visible') == 'on',
+            'serial_plotter_allow_port_switch': form.get('serial_plotter_allow_port_switch') == 'on',
+            'serial_plotter_default_port_id': form.get('serial_plotter_default_port_id') or '',
+            'serial_plotter_required_prefixes': required_prefixes,
+        },
+        'experiment_name': form.get('experiment_name') or '',
+    }
 
 
 def end_lab_pi_session(session_key, lab_pi_url=None):
@@ -1054,8 +1145,29 @@ def profile():
         db.session.commit()
         flash('Profile updated successfully!', 'success')
         return redirect(url_for('profile'))
-    
+
     return render_template('profile.html', user=user)
+
+@app.route('/account/password', methods=['POST'])
+@login_required
+def change_password():
+    user = User.query.get(current_user.id)
+    current_password = request.form.get('current_password', '')
+    new_password = request.form.get('new_password', '')
+    confirm_password = request.form.get('confirm_password', '')
+
+    if not user.check_password(current_password):
+        flash('Current password is incorrect.', 'danger')
+    elif new_password != confirm_password:
+        flash('New password and confirmation do not match.', 'danger')
+    elif not User.validate_password(new_password):
+        flash('New password does not meet the security requirements.', 'danger')
+    else:
+        user.password = new_password
+        db.session.commit()
+        flash('Password updated successfully.', 'success')
+
+    return redirect(url_for('profile'))
 
 @app.route('/logout')
 @login_required
@@ -1278,7 +1390,7 @@ def edit_device(device_id):
         flash('Device updated successfully', 'success')
         return redirect(url_for('manage_devices'))
     
-    return render_template('admin/edit_device.html', device=device, experiments=[], mapped_experiment_ids=[])
+    return render_template('admin/edit_device.html', device=device, experiments=[], mapped_experiment_counts={})
 
 @app.route('/admin/devices/view/<int:device_id>')
 @login_required
@@ -2455,9 +2567,20 @@ def view_session(session_id):
     return render_template('admin/view_session.html', session=session)
 
 # ---------- MAIN ROUTES ----------
+def _experiment_bench_status(exp_id):
+    """'online' if any assigned LabPi is online, 'offline' if benches exist but none online,
+    'none' if no bench is assigned to this experiment yet."""
+    benches = LabPi.query.filter_by(experiment_id=exp_id).all()
+    if not benches:
+        return 'none'
+    if any(b.status == 'ONLINE' for b in benches):
+        return 'online'
+    return 'offline'
+
 @app.route('/')
 def index():
     experiments = Experiment.query.filter_by(active=True).all()
+    bench_status = {exp.id: _experiment_bench_status(exp.id) for exp in experiments}
     bookings = []
     if current_user.is_authenticated:
         bookings = Booking.query.filter_by(user_id=current_user.id).order_by(Booking.start_time.desc()).all()
@@ -2499,7 +2622,7 @@ def index():
     upcoming_bookings = [b for b in bookings if b.status in upcoming_statuses] if current_user.is_authenticated else []
     completed_bookings = [b for b in bookings if b.status == 'COMPLETED'] if current_user.is_authenticated else []
     
-    return render_template('homepage.html', experiments=experiments, upcoming_bookings=upcoming_bookings, bookings_count={'upcoming': len(upcoming_bookings), 'completed': len(completed_bookings)})
+    return render_template('homepage.html', experiments=experiments, bench_status=bench_status, upcoming_bookings=upcoming_bookings, bookings_count={'upcoming': len(upcoming_bookings), 'completed': len(completed_bookings)})
 
 @app.route('/experiment')
 @login_required
@@ -2578,12 +2701,53 @@ def experiment():
         else:
             print(f"[Session] Rejoining existing session: {session_key}, status={session.status}")
     
-    # Find Lab Pi for this experiment
-    lab_pi = LabPi.query.filter_by(
-        experiment_id=booking.experiment_id,
-        status='ONLINE'
-    ).first()
-    
+    # Find Lab Pi for this experiment. Several Lab Pis can now serve the same
+    # experiment concurrently, so this can't just be "the first online one"
+    # (today's own `.first()` behavior) — that would shove every overlapping
+    # booking onto the same physical Pi while a second free one sits idle.
+    #
+    # Tier 1: this session already has a Lab Pi bound (page refresh mid-session)
+    # — reuse it, never re-pick, so a rejoin can't land on different hardware.
+    bound_lab_pi_id = active_sessions.get(session_key, {}).get('lab_pi_id')
+    lab_pi = LabPi.query.filter_by(lab_pi_id=bound_lab_pi_id, status='ONLINE').first() if bound_lab_pi_id else None
+    # Tier 2: same, but survives a Master restart (active_sessions is
+    # in-memory) — the Lab Pi's own heartbeat already reported this
+    # session_key as the one it's running.
+    if not lab_pi:
+        lab_pi = LabPi.query.filter_by(
+            experiment_id=booking.experiment_id, current_session_key=session_key, status='ONLINE'
+        ).first()
+    # Tier 3: fresh assignment — any online Lab Pi for this experiment that
+    # isn't already busy with a *different* session. `async_mode='threading'`
+    # means two students' /experiment requests genuinely run concurrently
+    # (this app is multi-threaded, and the network call to a Lab Pi further
+    # down blocks and releases the GIL) — a plain "read candidates, pick one
+    # in Python" has a window where two requests both see the same Lab Pi as
+    # free and both pick it, especially if that network call is slow. Closing
+    # that window needs the claim itself to be atomic: a single UPDATE ...
+    # WHERE current_session_key IS NULL only succeeds for whichever request's
+    # claim actually lands first — a second request racing for the same row
+    # gets rowcount 0 and moves on to the next candidate.
+    fresh_claim = False
+    if not lab_pi:
+        candidates = LabPi.query.filter_by(experiment_id=booking.experiment_id, status='ONLINE').all()
+        busy_elsewhere = {
+            info.get('lab_pi_id') for key, info in active_sessions.items()
+            if key != session_key and info.get('lab_pi_id')
+        }
+        for candidate in candidates:
+            if candidate.lab_pi_id in busy_elsewhere:
+                continue
+            claimed = LabPi.query.filter_by(id=candidate.id, current_session_key=None).update(
+                {'current_session_key': session_key, 'session_start_time': datetime.utcnow()},
+                synchronize_session=False,
+            )
+            db.session.commit()
+            if claimed:
+                lab_pi = candidate
+                fresh_claim = True
+                break
+
     print(f"[EXPERIMENT] Looking for Lab Pi: experiment_id={booking.experiment_id}, found={lab_pi}")
 
     if not lab_pi or not lab_pi.ip_address:
@@ -2623,9 +2787,9 @@ def experiment():
         print(f"[EXPERIMENT] Lab Pi notification response: {response.status_code}")
         response.raise_for_status()
         lab_pi_notified = True
-        lab_pi.current_session_key = session_key
-        lab_pi.session_start_time = datetime.utcnow()
-        db.session.commit()
+        # current_session_key/session_start_time are already set — by the
+        # atomic claim above for a fresh assignment, or already correct from
+        # a prior call for a rejoin — no need to write them again here.
 
         log_entry = SystemLog(
             level='INFO',
@@ -2640,6 +2804,14 @@ def experiment():
         print(f"[EXPERIMENT] Failed to notify Lab Pi: {e}")
 
     if not lab_pi_notified:
+        if fresh_claim:
+            # This claim was never confirmed by the Lab Pi — release it so a
+            # transient network blip doesn't permanently strand the Lab Pi as
+            # "busy" with a session that never actually started on it.
+            LabPi.query.filter_by(id=lab_pi.id, current_session_key=session_key).update(
+                {'current_session_key': None}, synchronize_session=False
+            )
+            db.session.commit()
         return render_template('expired_session.html', message="Could not reach the Lab Pi for this experiment. Please try again shortly or contact support.")
 
     # Every proxy/relay route (toggle_relay, flash, factory_reset, ports, the
@@ -2906,28 +3078,56 @@ def get_available_slots(exp_id):
     # Get all bookings for this experiment on the selected date
     start_of_day = datetime.combine(selected_date, datetime.min.time())
     end_of_day = start_of_day + timedelta(days=1)
-    
+
     bookings = Booking.query.filter(
         Booking.experiment_id == exp_id,
         Booking.status.notin_(['CANCELLED', 'EXPIRED']),
         Booking.start_time >= start_of_day,
         Booking.start_time < end_of_day
     ).all()
-    
-    # Return actual booked time ranges so the frontend can check overlap
-    # against slots of any duration, not just whole hours
+
+    # Several Lab Pis can serve the same experiment concurrently, so a time
+    # range isn't "booked" (unavailable to the frontend, same field name/shape
+    # it's always used) until overlapping bookings reach that count — a plain
+    # per-booking interval list would grey out a slot the first time it's used
+    # even with three more Lab Pis free. Sweep the day's booking start/end
+    # events, track how many bookings overlap at each point, and only emit an
+    # interval for the ranges where that count is >= capacity.
+    capacity = LabPi.query.filter_by(experiment_id=exp_id, status='ONLINE').count()
     booked_intervals = []
-    for booking in bookings:
-        end_str = booking.end_time.strftime('%H:%M') if booking.end_time.date() == selected_date else '24:00'
-        booked_intervals.append({
-            'start': booking.start_time.strftime('%H:%M'),
-            'end': end_str
-        })
+    if capacity == 0:
+        # No hardware online at all — the whole day is unavailable.
+        booked_intervals = [{'start': '00:00', 'end': '24:00'}]
+    elif bookings:
+        events = []
+        for booking in bookings:
+            end_dt = booking.end_time if booking.end_time.date() == selected_date else end_of_day
+            events.append((max(booking.start_time, start_of_day), 1))
+            events.append((end_dt, -1))
+        events.sort(key=lambda e: (e[0], -e[1]))  # process starts before ends at the same instant
+
+        overlap = 0
+        full_start = None
+        for t, delta in events:
+            was_full = overlap >= capacity
+            overlap += delta
+            is_full = overlap >= capacity
+            if is_full and not was_full:
+                full_start = t
+            elif was_full and not is_full:
+                booked_intervals.append({
+                    'start': full_start.strftime('%H:%M'),
+                    'end': t.strftime('%H:%M') if t.date() == selected_date else '24:00',
+                })
+                full_start = None
+        if full_start is not None:
+            booked_intervals.append({'start': full_start.strftime('%H:%M'), 'end': '24:00'})
 
     return jsonify({
         'date': date_str,
         'booked_intervals': booked_intervals,
-        'experiment_id': exp_id
+        'experiment_id': exp_id,
+        'capacity': capacity,
     })
 
 @app.route('/book/<int:exp_id>', methods=['GET', 'POST'])
@@ -2984,17 +3184,23 @@ def book_experiment(exp_id):
             flash('Invalid date or time format', 'danger')
             return redirect(url_for('book_experiment', exp_id=exp_id))
         
-        # Check if slot is available
+        # Capacity = how many Lab Pis are online for this experiment right now
+        # — several can serve the same experiment concurrently, so a slot is
+        # only full once overlapping bookings reach that count, not at 1.
+        capacity = LabPi.query.filter_by(experiment_id=exp_id, status='ONLINE').count()
         overlapping_bookings = Booking.query.filter(
             Booking.experiment_id == exp_id,
             Booking.status.notin_(['CANCELLED', 'EXPIRED']),
             ((Booking.start_time < end_time) & (Booking.end_time > start_time))
         ).count()
-        
-        print(f"DEBUG: Overlapping bookings: {overlapping_bookings}")
-        
-        if overlapping_bookings > 0:
-            flash('This slot is already booked. Please select another time.', 'danger')
+
+        print(f"DEBUG: Overlapping bookings: {overlapping_bookings}, capacity: {capacity}")
+
+        if capacity == 0:
+            flash('No lab hardware is currently online for this experiment. Please try again later.', 'danger')
+            return redirect(url_for('book_experiment', exp_id=exp_id))
+        if overlapping_bookings >= capacity:
+            flash('This slot is already fully booked. Please select another time.', 'danger')
             return redirect(url_for('book_experiment', exp_id=exp_id))
         
         # Create booking
@@ -3825,14 +4031,18 @@ def admin_lab_pi_edit(lab_pi_id):
     
     lab_pi = LabPi.query.get_or_404(lab_pi_id)
     experiments = Experiment.query.all()
-    
-    # Get all experiments that are already mapped to other Lab Pis (excluding current one)
+
+    # How many *other* Lab Pis already serve each experiment — informational
+    # only. Several Lab Pis are allowed to serve the same experiment
+    # concurrently (that's how multiple students get booked into one
+    # experiment at once), so this no longer blocks selection, just tells the
+    # admin who else already handles it.
     mapped_experiments = LabPi.query.filter(
         LabPi.id != lab_pi_id,
         LabPi.experiment_id.isnot(None)
     ).with_entities(LabPi.experiment_id).all()
-    mapped_experiment_ids = [exp_id for (exp_id,) in mapped_experiments]
-    
+    mapped_experiment_counts = Counter(exp_id for (exp_id,) in mapped_experiments)
+
     if request.method == 'POST':
         # Update Lab Pi fields
         lab_pi.name = request.form.get('name', lab_pi.name)
@@ -3841,18 +4051,9 @@ def admin_lab_pi_edit(lab_pi_id):
         lab_pi.hostname = request.form.get('hostname') or None
         lab_pi.status = request.form.get('status', lab_pi.status)
         lab_pi.hardware_ready = 'hardware_ready' in request.form
-        
+
         # Update experiment assignment
         experiment_id = request.form.get('experiment_id')
-        
-        # Validate: prevent mapping to an already assigned experiment
-        if experiment_id:
-            exp_id_int = int(experiment_id)
-            if exp_id_int in mapped_experiment_ids:
-                flash('This experiment is already mapped to another Lab Pi. Please select a different experiment.', 'danger')
-                return render_template('admin/edit_device.html', device=lab_pi, experiments=experiments, 
-                                      mapped_experiment_ids=mapped_experiment_ids, is_lab_pi=True)
-        
         lab_pi.experiment_id = int(experiment_id) if experiment_id else None
         
         # Update board_type (auto-sync from experiment if not manually set)
@@ -3903,8 +4104,8 @@ def admin_lab_pi_edit(lab_pi_id):
         flash(f'Lab Pi "{lab_pi.name}" updated successfully!', 'success')
         return redirect(url_for('manage_devices'))
     
-    return render_template('admin/edit_device.html', device=lab_pi, experiments=experiments, 
-                          mapped_experiment_ids=mapped_experiment_ids, is_lab_pi=True)
+    return render_template('admin/edit_device.html', device=lab_pi, experiments=experiments,
+                          mapped_experiment_counts=mapped_experiment_counts, is_lab_pi=True)
 
 
 @app.route('/admin/lab-pi/view/<int:lab_pi_id>', methods=['GET'])
@@ -3914,6 +4115,235 @@ def admin_lab_pi_view(lab_pi_id):
         abort(403)
     lab_pi = LabPi.query.get_or_404(lab_pi_id)
     return render_template('admin/view_device.html', device=lab_pi, is_lab_pi=True)
+
+
+# ---------- Lab Pi UI/layout settings (edited here, pushed to the Lab Pi's
+# Tier-A /api/admin/* API — no admin ever needs to visit the Lab Pi's own IP) ----------
+
+def _require_online_lab_pi(lab_pi_id):
+    """Shared guard for every ui-settings route below: 404 if the Lab Pi
+    doesn't exist, flash+None if it has no IP or isn't online (nothing to
+    reach), otherwise the LabPi row."""
+    lab_pi = LabPi.query.get_or_404(lab_pi_id)
+    if not lab_pi.ip_address or lab_pi.status != 'ONLINE':
+        flash(f'Lab Pi "{lab_pi.name}" is not online — cannot reach it to edit its UI settings.', 'danger')
+        return None
+    return lab_pi
+
+
+@app.route('/admin/lab-pi/<int:lab_pi_id>/ui-settings', methods=['GET', 'POST'])
+@login_required
+def admin_lab_pi_ui_settings(lab_pi_id):
+    if not current_user.is_admin:
+        abort(403)
+    lab_pi = _require_online_lab_pi(lab_pi_id)
+    if lab_pi is None:
+        return redirect(url_for('admin_lab_pi_edit', lab_pi_id=lab_pi_id))
+
+    if request.method == 'POST':
+        body = _ui_config_body_from_form(request.form)
+        ok, result = _lab_pi_admin_api(lab_pi, 'POST', '/api/admin/ui-config', body)
+        if ok:
+            flash('UI settings saved and pushed to the Lab Pi.', 'success')
+        else:
+            flash(result, 'danger')
+        return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+
+    ok, cfg = _lab_pi_admin_api(lab_pi, 'GET', '/api/admin/ui-config')
+    if not ok:
+        flash(cfg, 'danger')
+        return redirect(url_for('admin_lab_pi_edit', lab_pi_id=lab_pi_id))
+
+    # Other Lab Pis serving the same experiment — offered as "copy to" targets
+    # further down the page so settings don't have to be retyped by hand on
+    # every physical board handling this experiment.
+    sibling_lab_pis = []
+    if lab_pi.experiment_id:
+        sibling_lab_pis = LabPi.query.filter(
+            LabPi.experiment_id == lab_pi.experiment_id, LabPi.id != lab_pi.id
+        ).all()
+
+    return render_template('admin/lab_pi_ui_settings.html', device=lab_pi, cfg=cfg,
+                          control_keys=[(c['key'], c['label']) for c in cfg.get('control_keys', [])],
+                          available_ports=cfg.get('available_ports', []),
+                          sibling_lab_pis=sibling_lab_pis)
+
+
+@app.route('/admin/lab-pi/<int:lab_pi_id>/ui-settings/controls/add', methods=['POST'])
+@login_required
+def admin_lab_pi_ui_control_add(lab_pi_id):
+    if not current_user.is_admin:
+        abort(403)
+    lab_pi = _require_online_lab_pi(lab_pi_id)
+    if lab_pi is not None:
+        ok, result = _lab_pi_admin_api(lab_pi, 'POST', '/api/admin/controls', dict(request.form))
+        flash('Control added.' if ok else result, 'success' if ok else 'danger')
+    return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+
+
+@app.route('/admin/lab-pi/<int:lab_pi_id>/ui-settings/controls/<control_id>/edit', methods=['POST'])
+@login_required
+def admin_lab_pi_ui_control_edit(lab_pi_id, control_id):
+    if not current_user.is_admin:
+        abort(403)
+    lab_pi = _require_online_lab_pi(lab_pi_id)
+    if lab_pi is not None:
+        ok, result = _lab_pi_admin_api(lab_pi, 'PUT', f'/api/admin/controls/{control_id}', dict(request.form))
+        flash('Control updated.' if ok else result, 'success' if ok else 'danger')
+    return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+
+
+@app.route('/admin/lab-pi/<int:lab_pi_id>/ui-settings/controls/<control_id>/delete', methods=['POST'])
+@login_required
+def admin_lab_pi_ui_control_delete(lab_pi_id, control_id):
+    if not current_user.is_admin:
+        abort(403)
+    lab_pi = _require_online_lab_pi(lab_pi_id)
+    if lab_pi is not None:
+        ok, result = _lab_pi_admin_api(lab_pi, 'DELETE', f'/api/admin/controls/{control_id}')
+        flash('Control removed.' if ok else result, 'success' if ok else 'danger')
+    return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+
+
+@app.route('/admin/lab-pi/<int:lab_pi_id>/ui-settings/ports/add', methods=['POST'])
+@login_required
+def admin_lab_pi_ui_port_add(lab_pi_id):
+    if not current_user.is_admin:
+        abort(403)
+    lab_pi = _require_online_lab_pi(lab_pi_id)
+    if lab_pi is not None:
+        ok, result = _lab_pi_admin_api(lab_pi, 'POST', '/api/admin/ports', dict(request.form))
+        flash('Serial port added.' if ok else result, 'success' if ok else 'danger')
+    return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+
+
+@app.route('/admin/lab-pi/<int:lab_pi_id>/ui-settings/ports/<port_id>/edit', methods=['POST'])
+@login_required
+def admin_lab_pi_ui_port_edit(lab_pi_id, port_id):
+    if not current_user.is_admin:
+        abort(403)
+    lab_pi = _require_online_lab_pi(lab_pi_id)
+    if lab_pi is not None:
+        ok, result = _lab_pi_admin_api(lab_pi, 'PUT', f'/api/admin/ports/{port_id}', dict(request.form))
+        flash('Serial port updated.' if ok else result, 'success' if ok else 'danger')
+    return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+
+
+@app.route('/admin/lab-pi/<int:lab_pi_id>/ui-settings/ports/<port_id>/delete', methods=['POST'])
+@login_required
+def admin_lab_pi_ui_port_delete(lab_pi_id, port_id):
+    if not current_user.is_admin:
+        abort(403)
+    lab_pi = _require_online_lab_pi(lab_pi_id)
+    if lab_pi is not None:
+        ok, result = _lab_pi_admin_api(lab_pi, 'DELETE', f'/api/admin/ports/{port_id}')
+        flash('Serial port removed.' if ok else result, 'success' if ok else 'danger')
+    return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+
+
+@app.route('/admin/lab-pi/<int:lab_pi_id>/ui-settings/copy-to', methods=['POST'])
+@login_required
+def admin_lab_pi_ui_copy_to(lab_pi_id):
+    """Copy this Lab Pi's control toggles, defaults, experiment name, and
+    required dynamic controls onto another Lab Pi serving the same
+    experiment — for when several physical boards run the same experiment
+    and shouldn't need retyping the same settings on each one by hand.
+    Serial port profiles are never touched here: device paths (and the ids
+    that reference them) are specific to each physical Pi's attached
+    hardware, so copying them verbatim would silently point at the wrong
+    port on the target (see _remap_port_id_by_label)."""
+    if not current_user.is_admin:
+        abort(403)
+    source = _require_online_lab_pi(lab_pi_id)
+    if source is None:
+        return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+
+    target_id = request.form.get('target_lab_pi_id', type=int)
+    target = LabPi.query.get(target_id) if target_id else None
+    if target is None or target.experiment_id != source.experiment_id:
+        flash('Pick a valid Lab Pi that serves the same experiment.', 'danger')
+        return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+    if not target.ip_address or target.status != 'ONLINE':
+        flash(f'Lab Pi "{target.name}" is not online — cannot copy to it right now.', 'danger')
+        return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+
+    # The Copy button lives inside the same form as every settings checkbox
+    # (form="mainSettingsForm" in the template), so this request carries
+    # whatever's currently on screen — save it to the source Lab Pi first,
+    # then copy that just-saved state onward. Without this, Copy would read
+    # back whatever was last actually saved to disk, silently ignoring any
+    # edit made since the last "Save settings" click.
+    ok, result = _lab_pi_admin_api(source, 'POST', '/api/admin/ui-config', _ui_config_body_from_form(request.form))
+    if not ok:
+        flash(f'Could not save current settings to "{source.name}" before copying: {result}', 'danger')
+        return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+
+    ok, source_cfg = _lab_pi_admin_api(source, 'GET', '/api/admin/ui-config')
+    if not ok:
+        flash(source_cfg, 'danger')
+        return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+    ok, target_cfg = _lab_pi_admin_api(target, 'GET', '/api/admin/ui-config')
+    if not ok:
+        flash(target_cfg, 'danger')
+        return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+
+    source_ports = source_cfg.get('serial_ports', [])
+    target_ports = target_cfg.get('serial_ports', [])
+    warnings = []
+
+    default_port_id, warn = _remap_port_id_by_label(
+        source_cfg.get('defaults', {}).get('serial_plotter_default_port_id'), source_ports, target_ports)
+    if warn:
+        warnings.append(f'Default plotter port: {warn}')
+
+    body = {
+        'controls': source_cfg.get('controls', {}),
+        'defaults': {**source_cfg.get('defaults', {}), 'serial_plotter_default_port_id': default_port_id},
+        'experiment_name': source_cfg.get('experiment_name', ''),
+    }
+    ok, result = _lab_pi_admin_api(target, 'POST', '/api/admin/ui-config', body)
+    if not ok:
+        flash(f'Copy failed: {result}', 'danger')
+        return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
+
+    # Required dynamic controls: update ones that already exist on the target
+    # (matched by label+type, since ids are per-Pi — see _remap_port_id_by_label),
+    # add ones that don't. Never deletes a control the target has that the
+    # source doesn't, so a copy can't destroy target-only setup.
+    added, updated = 0, 0
+    target_existing = target_cfg.get('required_controls', [])
+    for control in source_cfg.get('required_controls', []):
+        portId, warn = _remap_port_id_by_label(control.get('portId'), source_ports, target_ports)
+        if warn:
+            warnings.append(f'Required control "{control.get("label")}": {warn}')
+        payload = _control_to_rc_form({**control, 'portId': portId})
+        existing = next(
+            (c for c in target_existing
+             if c.get('label') == control.get('label') and c.get('type') == control.get('type')),
+            None
+        )
+        if existing:
+            ok, result = _lab_pi_admin_api(target, 'PUT', f'/api/admin/controls/{existing["id"]}', payload)
+            if ok:
+                updated += 1
+            else:
+                warnings.append(f'Required control "{control.get("label")}": {result}')
+        else:
+            ok, result = _lab_pi_admin_api(target, 'POST', '/api/admin/controls', payload)
+            if ok:
+                added += 1
+            else:
+                warnings.append(f'Required control "{control.get("label")}": {result}')
+
+    flash(
+        f'Copied to "{target.name}": controls, defaults, and experiment name applied; '
+        f'{added} required control(s) added, {updated} updated. Serial port profiles were '
+        f'not touched — those stay per-Lab-Pi since each board\'s device paths differ.',
+        'success',
+    )
+    for w in warnings:
+        flash(w, 'warning')
+    return redirect(url_for('admin_lab_pi_ui_settings', lab_pi_id=lab_pi_id))
 
 
 @app.route('/admin/lab-pi/maintenance/<int:lab_pi_id>', methods=['POST'])

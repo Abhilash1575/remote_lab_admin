@@ -3,261 +3,193 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Bookings - Virtual Lab</title>
+    <title>My bookings - IKEN Remote Lab</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', Arial, sans-serif; background: #f4f6f9; min-height: 100vh; }
-        
-        .container { max-width: 1000px; margin: 40px auto; padding: 0 20px; }
-        
-        .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 30px; }
-        .header h1 { color: #484c7f; font-size: 28px; }
-        .header a { color: #6c757d; text-decoration: none; font-size: 14px; }
-        .header a:hover { color: #484c7f; }
-        
-        .stats-row { display: flex; gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: white; padding: 20px 30px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 15px; }
-        .stat-card i { font-size: 32px; color: #00C4FF; }
-        .stat-card .stat-info h3 { color: #484c7f; font-size: 14px; margin-bottom: 5px; }
-        .stat-card .stat-info span { font-size: 24px; font-weight: 800; color: #484c7f; }
-        
-        .booking-section { background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 30px; overflow: hidden; }
-        .section-header { padding: 20px 30px; border-bottom: 1px solid #e9ecef; display: flex; align-items: center; gap: 10px; }
-        .section-header h2 { color: #484c7f; font-size: 18px; }
-        .section-header.active { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; }
-        .section-header.completed { background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: white; }
-        
-        .booking-card { padding: 20px 30px; border-bottom: 1px solid #e9ecef; display: flex; align-items: center; justify-content: space-between; }
-        .booking-card:last-child { border-bottom: none; }
-        .booking-info { display: flex; align-items: center; gap: 20px; }
-        .booking-icon { width: 50px; height: 50px; background: linear-gradient(135deg, #484c7f, #1e203a); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; }
-        .booking-details h3 { color: #484c7f; font-size: 16px; margin-bottom: 5px; }
-        .booking-details p { color: #6c757d; font-size: 13px; }
-        .booking-details .slot { display: flex; align-items: center; gap: 5px; margin-top: 5px; }
-        .booking-details .slot i { color: #00C4FF; }
-        
-        .booking-status { text-align: right; }
-        .status-badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 700; }
-        .status-badge.upcoming { background: #fff3cd; color: #856404; }
-        .status-badge.active { background: #d4edda; color: #155724; }
-        .status-badge.completed { background: #e9ecef; color: #6c757d; }
-        .status-badge.cancelled { background: #f8d7da; color: #721c24; }
-        
-        .session-key { font-size: 12px; color: #6c757d; margin-top: 5px; }
-        
-        .action-btns { display: flex; gap: 10px; margin-top: 10px; justify-content: flex-end; }
-        .btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; }
-        .btn-primary { background: #00C4FF; color: white; }
-        .btn-danger { background: #dc3545; color: white; }
-        .btn-secondary { background: #6c757d; color: white; }
-        
-        .empty-state { padding: 60px 30px; text-align: center; color: #6c757d; }
-        .empty-state i { font-size: 48px; color: #e9ecef; margin-bottom: 15px; }
-        .empty-state p { font-size: 16px; }
-        
-        .tab-container { display: flex; gap: 10px; margin-bottom: 20px; }
-        .tab-btn { padding: 12px 24px; background: white; border: 2px solid #e9ecef; border-radius: 8px; cursor: pointer; font-weight: 600; color: #6c757d; transition: all 0.3s; }
-        .tab-btn.active { background: #484c7f; color: white; border-color: #484c7f; }
-        .tab-btn:hover:not(.active) { border-color: #00C4FF; color: #00C4FF; }
-        
-        @media (max-width: 768px) {
-            .stats-row { flex-direction: column; }
-            .booking-card { flex-direction: column; align-items: flex-start; gap: 15px; }
-            .booking-status { text-align: left; }
+        .booking-list { padding: 6px; }
+        .booking-row {
+            padding: 18px 20px;
+            border-bottom: 1px solid var(--iken-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .booking-row:last-child { border-bottom: none; }
+        .booking-main { display: flex; align-items: center; gap: 16px; }
+        .booking-icon {
+            width: 44px; height: 44px; border-radius: var(--radius-sm);
+            background: var(--iken-slate-bg); color: var(--iken-navy);
+            display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0;
+        }
+        .booking-icon.completed { background: var(--iken-green-bg); color: var(--iken-green); }
+        .booking-icon.cancelled { background: var(--iken-red-bg); color: var(--iken-red); }
+        .booking-title { font-weight: 700; font-size: 14.5px; color: var(--iken-text); }
+        .booking-sub { font-size: 12.5px; color: var(--iken-text-muted); margin-top: 3px; }
+        .booking-side { text-align: right; }
+        .booking-key { font-size: 12px; color: var(--iken-text-faint); margin-top: 6px; }
+        .booking-actions { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
+        .iken-section-title {
+            padding: 18px 22px;
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--iken-navy);
+            border-bottom: 1px solid var(--iken-border);
         }
     </style>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1><i class="fas fa-calendar-check"></i> My Bookings</h1>
-            <a href="{{ url_for('index') }}"><i class="fas fa-arrow-left"></i> Back to Home</a>
+<body class="iken-body">
+    {% set active = 'bookings' %}
+    {% include '_nav.html' %}
+
+    <div class="iken-page">
+        <div class="iken-page-head">
+            <div>
+                <p class="iken-eyebrow">{{ current_user.full_name }}</p>
+                <h1 class="iken-page-title">My bookings</h1>
+            </div>
+            <a href="{{ url_for('index') }}" class="iken-btn iken-btn-outline">Book another slot</a>
         </div>
-        
-        <div class="stats-row">
-            <div class="stat-card">
-                <i class="fas fa-clock"></i>
-                <div class="stat-info">
-                    <h3>Upcoming</h3>
-                    <span id="upcomingCount">{{ upcoming_bookings|length }}</span>
+
+        <div class="iken-stats-row">
+            <div class="iken-stat-tile">
+                <div class="iken-stat-icon amber"><i class="fas fa-clock"></i></div>
+                <div>
+                    <div class="iken-stat-num">{{ upcoming_bookings|length }}</div>
+                    <div class="iken-stat-label">Upcoming &amp; active</div>
                 </div>
             </div>
-            <div class="stat-card">
-                <i class="fas fa-check-circle"></i>
-                <div class="stat-info">
-                    <h3>Completed</h3>
-                    <span id="completedCount">{{ completed_bookings|length }}</span>
+            <div class="iken-stat-tile">
+                <div class="iken-stat-icon green"><i class="fas fa-check"></i></div>
+                <div>
+                    <div class="iken-stat-num">{{ completed_bookings|length }}</div>
+                    <div class="iken-stat-label">Completed</div>
                 </div>
             </div>
-            <div class="stat-card">
-                <i class="fas fa-times-circle"></i>
-                <div class="stat-info">
-                    <h3>Cancelled</h3>
-                    <span id="cancelledCount">{{ cancelled_bookings|length }}</span>
+            <div class="iken-stat-tile">
+                <div class="iken-stat-icon red"><i class="fas fa-times"></i></div>
+                <div>
+                    <div class="iken-stat-num">{{ cancelled_bookings|length }}</div>
+                    <div class="iken-stat-label">Cancelled</div>
                 </div>
             </div>
         </div>
-        
-        <div class="tab-container">
-            <button class="tab-btn active" onclick="showTab('upcoming')">
-                <i class="fas fa-clock"></i> Upcoming & Active
-            </button>
-            <button class="tab-btn" onclick="showTab('completed')">
-                <i class="fas fa-history"></i> History (Completed)
-            </button>
-            <button class="tab-btn" onclick="showTab('cancelled')">
-                <i class="fas fa-ban"></i> Cancelled
-            </button>
+
+        <div class="iken-tabs">
+            <button class="iken-tab active" onclick="ikenShowTab('upcoming', this)">Upcoming &amp; active</button>
+            <button class="iken-tab" onclick="ikenShowTab('completed', this)">History</button>
+            <button class="iken-tab" onclick="ikenShowTab('cancelled', this)">Cancelled</button>
         </div>
-        
-        <div id="upcomingSection" class="booking-section">
-            <div class="section-header active">
-                <i class="fas fa-clock"></i>
-                <h2>Upcoming & Active Bookings</h2>
-            </div>
-            
+
+        <div id="upcomingSection" class="iken-card">
+            <div class="iken-section-title">Upcoming &amp; active</div>
             {% if upcoming_bookings %}
-                {% for booking in upcoming_bookings %}
-                <div class="booking-card">
-                    <div class="booking-info">
-                        <div class="booking-icon">
-                            <i class="fas fa-microchip"></i>
+                <div class="booking-list">
+                    {% for booking in upcoming_bookings %}
+                    <div class="booking-row">
+                        <div class="booking-main">
+                            <div class="booking-icon"><i class="fas fa-microchip"></i></div>
+                            <div>
+                                <div class="booking-title">{{ booking.experiment.name }}</div>
+                                <div class="booking-sub">{{ booking.start_time.strftime('%Y-%m-%d %H:%M') }} &middot; {{ booking.experiment.max_duration }} min</div>
+                            </div>
                         </div>
-                        <div class="booking-details">
-                            <h3>{{ booking.experiment.name }}</h3>
-                            <div class="slot">
-                                <i class="fas fa-calendar"></i>
-                                {{ booking.start_time.strftime('%Y-%m-%d %H:%M') }} | Duration: {{ booking.experiment.max_duration }} min
+                        <div class="booking-side">
+                            <span class="iken-pill-status {{ booking.status|lower }}">{{ booking.status }}</span>
+                            <div class="booking-key">Key: {{ booking.session_key }}</div>
+                            <div class="booking-actions">
+                                {% if booking.status == 'UPCOMING' %}
+                                    <a href="{{ url_for('start_booking', booking_id=booking.id) }}" class="iken-btn iken-btn-sm iken-btn-primary">Start</a>
+                                    <a href="{{ url_for('cancel_booking', booking_id=booking.id) }}" class="iken-btn iken-btn-sm iken-btn-danger" onclick="return confirm('Are you sure you want to cancel this booking?');">Cancel</a>
+                                {% elif booking.status == 'IN_PROGRESS' or booking.status == 'ACTIVE' %}
+                                    <a href="{{ url_for('experiment') }}?key={{ booking.session_key }}" class="iken-btn iken-btn-sm iken-btn-primary">Go to lab</a>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
-                    <div class="booking-status">
-                        <span class="status-badge {{ booking.status|lower }}">{{ booking.status }}</span>
-                        <div class="session-key">Key: {{ booking.session_key }}</div>
-                        <div class="action-btns">
-                            {% if booking.status == 'UPCOMING' %}
-                                <a href="{{ url_for('start_booking', booking_id=booking.id) }}" class="btn btn-primary">
-                                    <i class="fas fa-play"></i> Start
-                                </a>
-                            {% elif booking.status == 'IN_PROGRESS' or booking.status == 'ACTIVE' %}
-                                <a href="{{ url_for('experiment') }}?key={{ booking.session_key }}" class="btn btn-primary">
-                                    <i class="fas fa-laptop"></i> Go to Lab
-                                </a>
-                            {% endif %}
-                            <a href="{{ url_for('cancel_booking', booking_id=booking.id) }}" class="btn btn-danger" onclick="return confirm('Are you sure you want to cancel this booking?');">
-                                <i class="fas fa-times"></i> Cancel
-                            </a>
-                        </div>
-                    </div>
+                    {% endfor %}
                 </div>
-                {% endfor %}
             {% else %}
-                <div class="empty-state">
-                    <i class="fas fa-calendar-times"></i>
-                    <p>No upcoming bookings. <a href="{{ url_for('index') }}" style="color: #00C4FF;">Browse experiments</a> to book a slot.</p>
+                <div class="iken-empty">
+                    <i class="fas fa-clock"></i>
+                    <p>Nothing booked</p>
+                    <p style="font-weight:400; font-size:13.5px; margin-bottom:20px;">Pick an experiment and reserve a bench.</p>
+                    <a href="{{ url_for('index') }}" class="iken-btn iken-btn-primary">Browse experiments</a>
                 </div>
             {% endif %}
         </div>
-        
-        <div id="completedSection" class="booking-section" style="display: none;">
-            <div class="section-header completed">
-                <i class="fas fa-history"></i>
-                <h2>Session History (Completed)</h2>
-            </div>
-            
+
+        <div id="completedSection" class="iken-card" style="display:none; margin-top: 22px;">
+            <div class="iken-section-title">History</div>
             {% if completed_bookings %}
-                {% for booking in completed_bookings %}
-                <div class="booking-card">
-                    <div class="booking-info">
-                        <div class="booking-icon" style="background: #6c757d;">
-                            <i class="fas fa-microchip"></i>
-                        </div>
-                        <div class="booking-details">
-                            <h3>{{ booking.experiment.name }}</h3>
-                            <div class="slot">
-                                <i class="fas fa-calendar"></i>
-                                {{ booking.start_time.strftime('%Y-%m-%d %H:%M') }} | Duration: {{ booking.experiment.max_duration }} min
-                            </div>
-                            {% if booking.completed_at %}
-                                <div class="slot">
-                                    <i class="fas fa-check"></i>
-                                    Completed: {{ booking.completed_at.strftime('%Y-%m-%d %H:%M') }}
+                <div class="booking-list">
+                    {% for booking in completed_bookings %}
+                    <div class="booking-row">
+                        <div class="booking-main">
+                            <div class="booking-icon completed"><i class="fas fa-microchip"></i></div>
+                            <div>
+                                <div class="booking-title">{{ booking.experiment.name }}</div>
+                                <div class="booking-sub">
+                                    {{ booking.start_time.strftime('%Y-%m-%d %H:%M') }} &middot; {{ booking.experiment.max_duration }} min
+                                    {% if booking.completed_at %} &middot; completed {{ booking.completed_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
                                 </div>
-                            {% endif %}
+                            </div>
+                        </div>
+                        <div class="booking-side">
+                            <span class="iken-pill-status completed">COMPLETED</span>
+                            <div class="booking-key">Key: {{ booking.session_key }}</div>
                         </div>
                     </div>
-                    <div class="booking-status">
-                        <span class="status-badge completed">COMPLETED</span>
-                        <div class="session-key">Key: {{ booking.session_key }}</div>
-                    </div>
+                    {% endfor %}
                 </div>
-                {% endfor %}
             {% else %}
-                <div class="empty-state">
+                <div class="iken-empty">
                     <i class="fas fa-history"></i>
-                    <p>No completed sessions yet.</p>
+                    <p>No completed sessions yet</p>
                 </div>
             {% endif %}
         </div>
-        
-        <div id="cancelledSection" class="booking-section" style="display: none;">
-            <div class="section-header" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white;">
-                <i class="fas fa-ban"></i>
-                <h2>Cancelled Bookings</h2>
-            </div>
-            
+
+        <div id="cancelledSection" class="iken-card" style="display:none; margin-top: 22px;">
+            <div class="iken-section-title">Cancelled</div>
             {% if cancelled_bookings %}
-                {% for booking in cancelled_bookings %}
-                <div class="booking-card">
-                    <div class="booking-info">
-                        <div class="booking-icon" style="background: #dc3545;">
-                            <i class="fas fa-microchip"></i>
-                        </div>
-                        <div class="booking-details">
-                            <h3>{{ booking.experiment.name }}</h3>
-                            <div class="slot">
-                                <i class="fas fa-calendar"></i>
-                                {{ booking.start_time.strftime('%Y-%m-%d %H:%M') }}
+                <div class="booking-list">
+                    {% for booking in cancelled_bookings %}
+                    <div class="booking-row">
+                        <div class="booking-main">
+                            <div class="booking-icon cancelled"><i class="fas fa-microchip"></i></div>
+                            <div>
+                                <div class="booking-title">{{ booking.experiment.name }}</div>
+                                <div class="booking-sub">{{ booking.start_time.strftime('%Y-%m-%d %H:%M') }}</div>
                             </div>
                         </div>
+                        <div class="booking-side">
+                            <span class="iken-pill-status cancelled">{{ booking.status }}</span>
+                            <div class="booking-key">Key: {{ booking.session_key }}</div>
+                        </div>
                     </div>
-                    <div class="booking-status">
-                        <span class="status-badge cancelled">CANCELLED</span>
-                        <div class="session-key">Key: {{ booking.session_key }}</div>
-                    </div>
+                    {% endfor %}
                 </div>
-                {% endfor %}
             {% else %}
-                <div class="empty-state">
+                <div class="iken-empty">
                     <i class="fas fa-check-circle"></i>
-                    <p>No cancelled bookings.</p>
+                    <p>No cancelled bookings</p>
                 </div>
             {% endif %}
         </div>
     </div>
-    
+
     <script>
-        function showTab(tab) {
-            // Hide all sections
+        function ikenShowTab(tab, btn) {
             document.getElementById('upcomingSection').style.display = 'none';
             document.getElementById('completedSection').style.display = 'none';
             document.getElementById('cancelledSection').style.display = 'none';
-            
-            // Remove active from all buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            
-            // Show selected section and activate button
-            if (tab === 'upcoming') {
-                document.getElementById('upcomingSection').style.display = 'block';
-                document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
-            } else if (tab === 'completed') {
-                document.getElementById('completedSection').style.display = 'block';
-                document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
-            } else if (tab === 'cancelled') {
-                document.getElementById('cancelledSection').style.display = 'block';
-                document.querySelector('.tab-btn:nth-child(3)').classList.add('active');
-            }
+            document.querySelectorAll('.iken-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(tab + 'Section').style.display = 'block';
+            btn.classList.add('active');
         }
     </script>
 </body>
