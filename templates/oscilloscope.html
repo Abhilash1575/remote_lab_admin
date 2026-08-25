@@ -4,34 +4,35 @@
 <meta charset="utf-8" />
 <title>High-Speed Oscilloscope - Embedded Virtual Lab</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <style>
-html, body { height: 100%; margin: 0; font-family: 'Inter', sans-serif; background: #0a0a12; color: #e0e0e0; overflow: hidden; }
-#CRO_CONTAINER { display: flex; flex-direction: column; height: 100vh; background: #0a0a12; }
-.control-panel { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 16px; background: #14141f; border-bottom: 1px solid #2a2a3a; }
+html, body { height: 100%; margin: 0; font-family: 'Inter', sans-serif; background: #0d1117; color: #e0e0e0; overflow: hidden; }
+#CRO_CONTAINER { display: flex; flex-direction: column; height: 100vh; background: #0d1117; }
+.control-panel { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 16px; background: #151a23; border-bottom: 1px solid #232936; }
 .control-group { display: flex; gap: 8px; align-items: center; }
 .control-group label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
-.osc-button { padding: 6px 12px; border-radius: 4px; border: 1px solid #333; cursor: pointer; background: #1e1e2e; color: #00f0ff; font-size: 12px; font-weight: 600; transition: all 0.15s; }
-.osc-button:hover { background: #2a2a3e; border-color: #00f0ff; }
-.osc-button.active { background: #00f0ff; color: #041726; }
-.osc-select { padding: 6px 10px; border-radius: 4px; border: 1px solid #333; background: #1e1e2e; color: #e0e0e0; font-size: 12px; min-width: 90px; }
-.osc-input { padding: 6px 8px; border-radius: 4px; border: 1px solid #333; background: #1e1e2e; color: #e0e0e0; font-size: 12px; width: 60px; text-align: center; }
+.osc-button { padding: 6px 12px; border-radius: 4px; border: 1px solid #232936; cursor: pointer; background: #1a1f2b; color: #3b82f6; font-size: 12px; font-weight: 600; transition: all 0.15s; }
+.osc-button:hover { background: #232936; border-color: #3b82f6; }
+.osc-button.active { background: #3b82f6; color: #041726; }
+.osc-select { padding: 6px 10px; border-radius: 4px; border: 1px solid #232936; background: #1a1f2b; color: #e0e0e0; font-size: 12px; min-width: 90px; }
+.osc-input { padding: 6px 8px; border-radius: 4px; border: 1px solid #232936; background: #1a1f2b; color: #e0e0e0; font-size: 12px; width: 60px; text-align: center; }
 .trigger-indicator { width: 8px; height: 8px; border-radius: 50%; background: #00ff7f; }
 .trigger-indicator.waiting { background: #ffaa00; animation: pulse 0.5s infinite; }
 .trigger-indicator.triggered { background: #00ff7f; box-shadow: 0 0 10px #00ff7f; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 .chart-area { flex: 1; position: relative; min-height: 0; }
 .chart-canvas { width: 100%; height: 100%; }
-.status-bar { display: flex; gap: 16px; padding: 8px 16px; background: #14141f; border-top: 1px solid #2a2a3a; font-size: 11px; color: #666; }
+.status-bar { display: flex; gap: 16px; padding: 8px 16px; background: #151a23; border-top: 1px solid #232936; font-size: 11px; color: #666; }
 .status-bar .stat { display: flex; align-items: center; gap: 6px; }
-.status-bar .stat-value { color: #00f0ff; font-family: 'Roboto Mono', monospace; }
+.status-bar .stat-value { color: #3b82f6; font-family: 'Roboto Mono', monospace; }
 </style>
 </head>
 <body>
 <div id="CRO_CONTAINER">
   <div class="control-panel">
     <div class="control-group">
-      <h3 style="margin:0; color:#00f0ff; font-size:16px;">STM32 Dual-Channel Oscilloscope</h3>
+      <h3 style="margin:0; color:#3b82f6; font-size:16px;">STM32 Dual-Channel Oscilloscope</h3>
     </div>
 
     <div class="control-group" style="gap:12px;">
@@ -99,8 +100,8 @@ html, body { height: 100%; margin: 0; font-family: 'Inter', sans-serif; backgrou
         <label style="cursor:pointer;"><input type="checkbox" id="oscSmooth"> Smooth</label>
       </div>
       <div class="control-group">
-        <button id="oscAutoBtn" class="osc-button">⚡ Auto</button>
-        <button id="oscFreezeBtn" class="osc-button">⏸ Freeze</button>
+        <button id="oscAutoBtn" class="osc-button"><i class="fas fa-wand-magic-sparkles"></i> Auto</button>
+        <button id="oscFreezeBtn" class="osc-button"><i class="fas fa-snowflake"></i> Freeze</button>
       </div>
       <div class="control-group">
         <div class="trigger-indicator" id="triggerLed"></div>
@@ -109,7 +110,7 @@ html, body { height: 100%; margin: 0; font-family: 'Inter', sans-serif; backgrou
     </div>
 
     <div class="control-group" style="margin-left: auto;">
-      <button id="backBtn" class="osc-button">Back to Lab</button>
+      <button id="backBtn" class="osc-button"><i class="fas fa-arrow-left"></i> Back to Lab</button>
     </div>
   </div>
 
@@ -280,7 +281,7 @@ function syncOscSettings() {
 document.getElementById('oscAutoBtn').addEventListener('click', () => socket.emit('osc_auto_level'));
 document.getElementById('oscFreezeBtn').addEventListener('click', () => {
   isOscFrozen = !isOscFrozen;
-  document.getElementById('oscFreezeBtn').textContent = isOscFrozen ? '▶ Resume' : '⏸ Freeze';
+  document.getElementById('oscFreezeBtn').innerHTML = isOscFrozen ? '<i class="fas fa-play"></i> Resume' : '<i class="fas fa-snowflake"></i> Freeze';
   document.getElementById('oscFreezeBtn').classList.toggle('active', isOscFrozen);
   syncOscSettings();
 });

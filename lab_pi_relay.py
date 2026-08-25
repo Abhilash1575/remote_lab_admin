@@ -32,6 +32,7 @@ RELAYED_EVENTS = [
     'osc_settings_sync',
     'board_type_updated',
     'ui_config_updated',
+    'debug_event',
 ]
 
 class LabPiRelayManager:

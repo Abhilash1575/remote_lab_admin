@@ -32,46 +32,131 @@
 <script src="{{ url_for('static', filename='vendor/katex/katex.min.js') }}"></script>
 <style>
 /* (kept your original styles with small fixes) */
-html,body{height:100%;margin:0;font-family:'Inter',sans-serif;background:#1c1c1f;color:#e0e0e0;overflow:hidden}
-.header-bar{background:#202225;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;height:44px;position:relative}
-.header-experiment-name{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:14px;font-weight:600;color:#3fc6d6;white-space:nowrap;max-width:40%;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
-.header-bar h1{margin:0;font-size:16px}
-#timer{background:#d68f3f;color:#1c1c1f;padding:6px 12px;border-radius:6px;font-weight:700}
-.container{display:flex;height:calc(100vh - 44px);gap:12px;padding:12px;box-sizing:border-box}
-.left-column{width:360px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;overflow-x:hidden;padding-right:6px} /* prevent horizontal scroll */
-.right-column{flex:1;display:flex;flex-direction:column;gap:12px;overflow:auto}
-.chart-video-row{display:flex;gap:12px;align-items:stretch}
-.chart-video-row>.card{flex:1;min-width:0}
-.chart-video-row>.card:last-child{display:flex;flex-direction:column}
-.chart-video-row>.card:last-child .video-container{flex:1;height:auto;min-height:240px}
+html,body{height:100%;margin:0;font-family:'Inter',sans-serif;background:#0d1117;color:#e0e0e0;overflow:hidden}
+.header-bar{background:#0d1117;padding:10px 20px;display:flex;justify-content:space-between;align-items:center;min-height:44px;position:relative;border-bottom:1px solid #232936;flex-wrap:wrap;gap:8px}
+.header-experiment-name{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:14px;font-weight:600;color:#3b82f6;white-space:nowrap;max-width:40%;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.header-brand{display:flex;align-items:center;gap:9px}
+.header-logo{height:22px;width:auto;filter:brightness(0) invert(1);opacity:.92}
+.header-brand-name{font-size:15px;font-weight:700;color:#e0e0e0;white-space:nowrap}
+.header-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.status-pills{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.status-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:#9a9fa4;background:#151a23;border:1px solid #232936;border-radius:20px;padding:5px 10px;white-space:nowrap}
+.status-pill b{color:#e0e0e0;font-weight:700}
+.status-pill i{color:#6a6a72;font-size:11px}
+.status-dot{width:7px;height:7px;border-radius:50%;background:#6a6a72;display:inline-block}
+.status-dot.on{background:#4fb583;box-shadow:0 0 0 2px rgba(79,181,131,0.2)}
+.status-dot.off{background:#e07575;box-shadow:0 0 0 2px rgba(224,117,117,0.2)}
+#timer{background:#d68f3f;color:#0d1117;padding:6px 12px;border-radius:6px;font-weight:700}
+.container{display:flex;height:calc(100vh - 44px);gap:0;padding:10px;box-sizing:border-box}
+.left-column{width:360px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;overflow-x:hidden;padding-right:2px;transition:width .15s ease,padding .15s ease,opacity .1s ease} /* prevent horizontal scroll */
+.left-column.collapsed{width:0;padding:0;margin:0;opacity:0;overflow:hidden;gap:0}
+.left-column.no-transition{transition:none}
+.sidebar-panel{display:flex;flex-direction:column;gap:12px}
+.sidebar-rail{width:40px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 0;background:#151a23;border:1px solid #232936;border-radius:10px;margin-right:6px}
+.rail-btn{width:28px;height:28px;border-radius:7px;background:transparent;border:none;color:#9a9fa4;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;transition:background .12s ease,color .12s ease}
+.rail-btn:hover{background:#232936;color:#e0e0e0}
+.rail-btn.active{background:#3b82f6;color:#041726}
+.rail-btn.active:hover{background:#3b82f6;color:#041726}
+.sidebar-section{padding:14px 0}
+.sidebar-section:first-child{padding-top:0}
+.sidebar-section:last-child{padding-bottom:0}
+.sidebar-section:not(:first-child){border-top:1px solid #232936;margin-top:2px}
+.sidebar-section-title{color:#3b82f6;margin:0 0 10px 0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px}
+.full-width-btn{width:100%;box-sizing:border-box;text-align:center}
+.full-width-btn.outline{background:transparent;border:1px solid #3a3a40;color:#e0e0e0}
+.full-width-btn.outline:hover{background:#232936}
+.full-width-btn:disabled{opacity:.5;cursor:not-allowed}
+.conn-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;font-size:13px;color:#9a9fa4}
+.conn-row .small-input,.conn-row select{width:150px}
+.conn-value{color:#e0e0e0;display:flex;align-items:center;gap:6px;font-weight:600}
+.file-chip{display:flex;align-items:center;gap:10px;background:#151a23;border:1px solid #232936;border-radius:8px;padding:9px 12px;margin-bottom:8px}
+.file-chip i.fa-file{color:#3b82f6;font-size:16px}
+.file-chip-info{flex:1;display:flex;flex-direction:column;font-size:13px;min-width:0}
+#firmwareChipName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-chip-size{color:#9a9fa4;font-size:11px}
+.file-chip-check{color:#4fb583}
+.toggle-switch{width:40px;height:22px;border-radius:12px;background:#1a1f2b;border:none;padding:2px;cursor:pointer;position:relative;flex-shrink:0}
+.toggle-switch:disabled{opacity:.5;cursor:not-allowed}
+.toggle-switch .toggle-thumb{display:block;width:18px;height:18px;border-radius:50%;background:#9a9fa4;transition:transform .15s ease,background .15s ease}
+.toggle-switch.on{background:#4fb583}
+.toggle-switch.on .toggle-thumb{transform:translateX(18px);background:#fff}
+.serial-monitor-block:not(:last-child){margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #232936}
+/* Fill whatever room the row-above/Serial-Monitor split handle leaves it,
+   instead of sitting at a fixed height — otherwise dragging that handle just
+   moves the boundary line without the log actually growing into the freed
+   space, which is the "moves it, doesn't expand it" bug. */
+#serialMonitorCard{flex:1;min-height:120px;display:flex;flex-direction:column;overflow:hidden}
+#serialMonitorCard>h3{flex-shrink:0}
+#serialMonitorTab,#debugConsoleTab,#registersTab,#disasmTab,#memoryTab{flex:1;min-height:0;display:flex;flex-direction:column}
+.debug-table{width:100%;border-collapse:collapse;font-family:'SFMono-Regular',Consolas,monospace;font-size:12.5px}
+.debug-table td{padding:4px 10px;border-bottom:1px solid #1a1f2b;color:#c9d1d9;white-space:nowrap}
+.debug-table td.reg-name{color:#9a9fa4}
+.debug-table tr.pc-row td{background:#1e3a5f;color:#e0e0e0}
+#debugMemDump{font-family:'SFMono-Regular',Consolas,monospace;font-size:12.5px;white-space:pre}
+.debug-list{list-style:none;margin:8px 0 0 0;padding:0;font-size:12.5px;font-family:'SFMono-Regular',Consolas,monospace}
+.debug-list li{display:flex;justify-content:space-between;align-items:center;padding:4px 0;color:#c9d1d9;border-bottom:1px solid #1a1f2b}
+.debug-list button,.debug-kv-list button{background:transparent;border:none;color:#9a9fa4;cursor:pointer;font-size:12px;padding:2px 6px}
+.debug-list button:hover,.debug-kv-list button:hover{color:#e5484d}
+.debug-kv-list{margin-top:8px;font-size:12.5px;font-family:'SFMono-Regular',Consolas,monospace}
+.debug-kv-list .debug-kv-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #1a1f2b;color:#c9d1d9}
+.debug-kv-list .debug-kv-name{color:#9a9fa4;overflow:hidden;text-overflow:ellipsis}
+.debug-kv-list .debug-kv-value{color:#3b82f6;text-align:right;flex-shrink:0}
+.serial-monitor-block{flex:1;min-height:0;display:flex;flex-direction:column}
+.panel-tabs{display:flex;gap:2px;margin-bottom:10px;flex-shrink:0;border-bottom:1px solid #232936}
+.panel-tab{background:transparent;border:none;border-bottom:2px solid transparent;color:#9a9fa4;font-size:13px;font-weight:600;padding:8px 4px;margin-right:16px;cursor:pointer;border-radius:0}
+.panel-tab:hover{color:#e0e0e0}
+.panel-tab.active{color:#3b82f6;border-bottom-color:#3b82f6}
+.right-column{flex:1;display:flex;flex-direction:column;gap:0;overflow:auto}
+.chart-video-row{display:flex;gap:0;align-items:stretch;height:460px}
+.chart-video-row>.card{min-width:280px;min-height:0;display:flex;flex-direction:column;overflow:auto}
+.chart-video-row>.card:first-child{flex:0 0 640px}
+.chart-video-row>.card:last-child{flex:1 1 auto}
+.chart-video-row>.card:last-child .video-container{flex:1;height:auto;min-height:0}
+/* A slim (not zero) gap — VS Code's own splitters aren't perfectly flush
+   either, just a few px, or two adjacent panels read as overlapping rather
+   than divided. The drag hit target is widened a bit further via the
+   ::before pseudo-element so it's still easy to grab despite the thin
+   visible footprint. A real Font Awesome grip icon sits at the midpoint,
+   clearly visible at rest (not just on hover) and brightening further on
+   hover/drag — a plain Unicode dot glyph at small sizes turned out to render
+   as good as invisible, unlike an actual icon glyph. */
+.resize-handle-v{width:3px;flex-shrink:0;cursor:ew-resize;position:relative;touch-action:none;z-index:2;display:flex;align-items:center;justify-content:center;overflow:visible}
+.resize-handle-v::before{content:'';position:absolute;top:0;bottom:0;left:-5px;right:-5px}
+.resize-handle-v i{color:#6e7681;font-size:14px;line-height:1;opacity:.85;transition:opacity .12s ease,color .12s ease;pointer-events:none}
+.resize-handle-v:hover i,.resize-handle-v.dragging i{opacity:1;color:#3b82f6}
+.resize-handle-h{height:3px;cursor:ns-resize;position:relative;touch-action:none;z-index:2;display:flex;align-items:center;justify-content:center;overflow:visible}
+.resize-handle-h::before{content:'';position:absolute;left:0;right:0;top:-5px;bottom:-5px}
+.resize-handle-h i{color:#6e7681;font-size:14px;line-height:1;opacity:.85;transition:opacity .12s ease,color .12s ease;pointer-events:none}
+.resize-handle-h:hover i,.resize-handle-h.dragging i{opacity:1;color:#3b82f6}
+.resize-handle-h:hover::after,.resize-handle-h.dragging::after{opacity:1;color:#3b82f6}
 .chart-fields-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px 12px;align-items:end;margin-bottom:8px}
 .chart-field{display:flex;flex-direction:column;gap:4px;min-width:0}
 .chart-field>span{font-size:11px;color:#9a9fa4;text-transform:uppercase;letter-spacing:.4px}
 .chart-field select,.chart-field input{width:100%;box-sizing:border-box}
-.card{background:#252527;padding:14px;border-radius:10px;border:1px solid #3a3a3d;box-shadow:0 0 10px rgba(0,0,0,0.4);position:relative}
-.section-title, .card h3{color:#3fc6d6;margin:0 0 8px 0;font-size:16px}
+.card{background:#151a23;padding:14px;border-radius:10px;border:1px solid #1a1f2b;box-shadow:0 0 10px rgba(0,0,0,0.4);position:relative}
+.section-title, .card h3{color:#3b82f6;margin:0 0 8px 0;font-size:16px}
 .controls-group{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
-.primary{background:#3fc6d6;color:#041726;font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,0.35);transition:transform .1s ease,box-shadow .1s ease,filter .1s ease}
+.primary{background:#3b82f6;color:#041726;font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,0.35);transition:transform .1s ease,box-shadow .1s ease,filter .1s ease}
 .primary:hover{filter:brightness(1.1);box-shadow:0 2px 4px rgba(0,0,0,0.4)}
 .primary:active{transform:translateY(1px);box-shadow:0 1px 1px rgba(0,0,0,0.35)}
 .pill-toggle{border-radius:20px;padding:7px 16px;display:inline-flex;align-items:center;gap:7px}
 .icon-btn{width:32px;height:32px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
 .pause-btn.is-paused{background:#d9a044}
 .danger{background:#e07575;color:#101018;font-weight:700}
-#firmwareInput{background:#3a3a3d;color:#9a9fa4;border:1px solid #454549;border-radius:6px;padding:7px 8px;font-family:'Inter',sans-serif;font-size:13px;box-sizing:border-box}
-#firmwareInput::file-selector-button{background:#3fc6d6;color:#041726;font-weight:700;border:none;border-radius:5px;padding:6px 12px;margin-right:10px;cursor:pointer;transition:background .15s ease}
-#firmwareInput::file-selector-button:hover{background:#6fd4e0}
+#firmwareInput{background:#1a1f2b;color:#9a9fa4;border:1px solid #2c3341;border-radius:6px;padding:7px 8px;font-family:'Inter',sans-serif;font-size:13px;box-sizing:border-box}
+#firmwareInput::file-selector-button{background:#3b82f6;color:#041726;font-weight:700;border:none;border-radius:5px;padding:6px 12px;margin-right:10px;cursor:pointer;transition:background .15s ease}
+#firmwareInput::file-selector-button:hover{background:#60a5fa}
 #firmwareInput:disabled{opacity:.5;cursor:not-allowed}
 #firmwareInput:disabled::file-selector-button{cursor:not-allowed}
-#progressBar{height:10px;background:#222;border-radius:6px;overflow:hidden;border:1px solid #333}
-#progress{height:100%;width:0;background:linear-gradient(90deg,rgba(63, 198, 214,0.8),rgba(0,255,127,0.6));transition:width 0.25s}
+#progressBar{height:10px;background:#0d1117;border-radius:6px;overflow:hidden;border:1px solid #1a1f2b}
+#progress{height:100%;width:0;background:linear-gradient(90deg,rgba(59, 130, 246,0.8),rgba(0,255,127,0.6));transition:width 0.25s}
 #dynamicControls{display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto} /* limit height and allow vertical scroll */
 .control-row{display:flex;gap:8px;align-items:center}
 .control-row label{min-width:90px}
-.small-input{padding:6px;border-radius:6px;border:none;background:#3a3a3d;color:#3fc6d6}
-#mainChart{width:100%;height:320px}
-.video-container{position:relative;height:300px;background:#000;border-radius:8px;overflow:hidden;border:1px solid #454549;--zoom-factor:1;--pan-x:0;--pan-y:0;transform-origin:center center}
+.small-input{padding:6px;border-radius:6px;border:none;background:#1a1f2b;color:#3b82f6}
+#mainChart{width:100%;height:100%}
+.video-container{position:relative;height:300px;background:#000;border-radius:8px;overflow:hidden;border:1px solid #2c3341;--zoom-factor:1;--pan-x:0;--pan-y:0;transform-origin:center center}
 .video-container img, .video-container video{width:100%;height:100%;object-fit:cover;transform:scale(var(--zoom-factor)) translate(var(--pan-x), var(--pan-y));transition:transform 0.1s ease}
 /* Video overlay controls — hidden until hover/focus, like a normal video player,
    so the feed itself isn't cluttered with always-on buttons. */
@@ -79,34 +164,34 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
 .video-container:hover .video-controls-overlay,.video-container:focus-within .video-controls-overlay{opacity:1}
 .video-controls-top{display:flex;gap:6px;justify-content:flex-end;pointer-events:auto}
 .video-controls-bottom{display:flex;justify-content:space-between;align-items:center;pointer-events:auto}
-.vid-btn{width:32px;height:32px;border-radius:50%;background:rgba(4,23,38,0.8);color:#3fc6d6;border:1px solid #3fc6d6;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s ease,color .15s ease}
-.vid-btn:hover{background:#3fc6d6;color:#041726}
+.vid-btn{width:32px;height:32px;border-radius:50%;background:rgba(4,23,38,0.8);color:#3b82f6;border:1px solid #3b82f6;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s ease,color .15s ease}
+.vid-btn:hover{background:#3b82f6;color:#041726}
 .vid-btn-lg{width:38px;height:38px;font-size:15px}
 .label-muted{font-size:12px;color:#9a9fa4;margin-left:6px}
 .readout-value{font-family:'Roboto Mono',monospace;font-size:16px;color:#00ff7f;background:#101018;padding:4px 8px;border-radius:4px;min-width:100px;text-align:right;}
 .readout-unit{color:#9a9fa4;font-size:13px}
 .readout-unit .katex{color:#9a9fa4}
-.serial-slot{border:1px solid #333;border-radius:8px;padding:10px;margin-bottom:10px}
+.serial-slot{border:1px solid #1a1f2b;border-radius:8px;padding:10px;margin-bottom:10px}
 .serial-slot:last-child{margin-bottom:0}
-.serial-slot-label{font-weight:700;margin-bottom:6px;color:#3fc6d6}
-.slot-feedback{font-family:'Roboto Mono',monospace;background:#000;color:#00ff7f;padding:8px;height:140px;overflow:auto;border:1px solid #00ff7f;white-space:pre-wrap;font-size:12px}
+.serial-slot-label{font-weight:700;margin-bottom:6px;color:#3b82f6}
+.slot-feedback{font-family:'Roboto Mono',monospace;background:#000;color:#00ff7f;padding:8px;flex:1;min-height:60px;overflow:auto;border:1px solid #00ff7f;white-space:pre-wrap;font-size:12px}
 /* dropdown styling */
-.var-dropdown{display:none;position:absolute;top:38px;left:0;background:#1e1e21;border:1px solid #454549;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.45);z-index:10;min-width:140px;max-height:260px;overflow:auto}
-.var-dropdown .item{padding:8px 10px;cursor:pointer;border-bottom:1px solid #3fc6d622;color:#3fc6d6}
-.var-dropdown .item:hover{background:#3fc6d622}
+.var-dropdown{display:none;position:absolute;top:38px;left:0;background:#151a23;border:1px solid #2c3341;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.45);z-index:10;min-width:140px;max-height:260px;overflow:auto}
+.var-dropdown .item{padding:8px 10px;cursor:pointer;border-bottom:1px solid #3b82f622;color:#3b82f6}
+.var-dropdown .item:hover{background:#3b82f622}
 /* Dynamic-control add dialog */
 .control-dialog-overlay{position:fixed;inset:0;background:rgba(4,6,15,0.65);display:flex;align-items:center;justify-content:center;z-index:2000;animation:cdFadeIn .12s ease-out}
 @keyframes cdFadeIn{from{opacity:0}to{opacity:1}}
-.control-dialog-box{background:#252527;border:1px solid #3a3a3d;border-radius:12px;padding:22px 24px;width:340px;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,0.55)}
-.control-dialog-box h3{margin:0 0 16px 0;color:#3fc6d6;font-size:16px}
+.control-dialog-box{background:#151a23;border:1px solid #1a1f2b;border-radius:12px;padding:22px 24px;width:340px;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,0.55)}
+.control-dialog-box h3{margin:0 0 16px 0;color:#3b82f6;font-size:16px}
 .control-dialog-row{margin-bottom:13px;display:flex;flex-direction:column;gap:5px}
 .control-dialog-row label{font-size:12px;color:#9a9fa4;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
-.control-dialog-row input,.control-dialog-row select{padding:9px 10px;border-radius:6px;border:1px solid #3a3a3d;background:#1c1c1f;color:#3fc6d6;font-size:14px;font-family:'Roboto Mono',monospace}
-.control-dialog-row input:focus,.control-dialog-row select:focus{outline:none;border-color:#3fc6d6;box-shadow:0 0 0 2px #3fc6d633}
+.control-dialog-row input,.control-dialog-row select{padding:9px 10px;border-radius:6px;border:1px solid #1a1f2b;background:#0d1117;color:#3b82f6;font-size:14px;font-family:'Roboto Mono',monospace}
+.control-dialog-row input:focus,.control-dialog-row select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 2px #3b82f633}
 .control-dialog-hint{font-size:11px;color:#6d7a85}
 .control-dialog-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
 .control-dialog-btns button{padding:8px 16px}
-.control-dialog-cancel{background:#3a3a3d;color:#e0e0e0}
+.control-dialog-cancel{background:#1a1f2b;color:#e0e0e0}
 @media(max-width:900px){.container{flex-direction:column}.left-column{width:100%;order:2}.right-column{order:1}}
 @media(max-width:1100px){.chart-video-row{flex-direction:column}}
 /* small layout tweaks for the new button card */
@@ -117,94 +202,118 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
 </head>
 <body>
 <div class="header-bar">
-  <h1 id="experimentTitle"> Remote Lab DESE </h1>
+  <div class="header-brand">
+    <img src="{{ url_for('static', filename='img/iken-mark.png') }}" alt="IKEN" class="header-logo">
+    <span class="header-brand-name">IKEN Remote Lab</span>
+  </div>
   <div id="experimentNameCenter" class="header-experiment-name" style="{{ 'display:none' if not ui_config.experiment_name }}">{{ ui_config.experiment_name }}</div>
-  <div id="timer">Time Left: 00:00</div>
+  <div class="header-right">
+    <div class="status-pills">
+      <span class="status-pill" id="pillBoard" title="Board"><i class="fas fa-microchip"></i> {{ board_type }}</span>
+      <span class="status-pill" id="pillPower" title="Power"><span class="status-dot off" id="pillPowerDot"></span>Power <b id="pillPowerState">OFF</b></span>
+      <span class="status-pill" id="pillSerial" title="Serial"><span class="status-dot off" id="pillSerialDot"></span>Serial <b id="pillSerialState">Disconnected</b></span>
+      <span class="status-pill" id="pillCamera" title="Camera"><span class="status-dot on" id="pillCameraDot"></span>Camera <b id="pillCameraState">Live</b></span>
+    </div>
+    <div id="timer">Time Left: 00:00</div>
+  </div>
 </div>
 
 <!-- Session Closed Overlay -->
-<div id="sessionClosed" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#1c1c1f; color:#e0e0e0; z-index:9999; align-items:center; justify-content:center; flex-direction:column; font-size:2em;">
+<div id="sessionClosed" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#0d1117; color:#e0e0e0; z-index:9999; align-items:center; justify-content:center; flex-direction:column; font-size:2em;">
   <h2>Session Closed</h2>
   <p>Book another slot to continue.</p>
-  <button onclick="window.location.href='{{ booking_page_url }}'" style="padding:10px 20px; background:#3fc6d6; color:#041726; border:none; border-radius:6px; font-weight:700;"><i class="fas fa-calendar-check"></i> Go to My Bookings</button>
+  <button onclick="window.location.href='{{ booking_page_url }}'" style="padding:10px 20px; background:#3b82f6; color:#041726; border:none; border-radius:6px; font-weight:700;"><i class="fas fa-calendar-check"></i> Go to My Bookings</button>
 </div>
 
 <div class="container">
-  <div class="left-column">
+  <div class="sidebar-rail">
+    <button id="railSetup" class="rail-btn active" title="Lab Setup"><i class="fas fa-gear"></i></button>
+    {% if ui_config.defaults.dynamic_controls_visible %}
+    <button id="railDynamic" class="rail-btn" title="Dynamic Controls"><i class="fas fa-sliders"></i></button>
+    {% endif %}
+    {% if debuggable %}
+    <button id="railDebug" class="rail-btn" title="Debug"><i class="fas fa-bug"></i></button>
+    {% endif %}
+    <div style="flex:1"></div>
+    <button id="sidebarCollapseBtn" class="rail-btn" title="Collapse sidebar"><i class="fas fa-angles-left"></i></button>
+  </div>
+  <div class="left-column" id="sidebarPanels">
+   <div id="panelSetup" class="sidebar-panel">
     <div class="card">
-      <h3>Board & Firmware Upload</h3>
-
-<label style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
-        Board
-        <select id="boardType" class="small-input" style="width:160px;margin-left:6px" {{ 'disabled' if not ui_config.controls.board_select }}>
+      <div class="sidebar-section">
+      <h4 class="sidebar-section-title">Lab Setup</h4>
+      <div class="conn-row" style="padding-top:0"><span>Board</span>
+        <select id="boardType" class="small-input" {{ 'disabled' if not ui_config.controls.board_select }}>
           <option value="{{ board_type }}">{{ board_type }}</option>
         </select>
-      </label>
+      </div>
 
-      <input id="firmwareInput" type="file" accept=".bin,.hex,.out,.txt,.dfu" style="width:100%;margin-bottom:8px" {{ 'disabled' if not ui_config.controls.flash_firmware }}>
+      <div class="file-chip" id="firmwareChip">
+        <i class="fas fa-file"></i>
+        <div class="file-chip-info">
+          <span id="firmwareChipName">No file chosen</span>
+          <span id="firmwareChipSize" class="file-chip-size"></span>
+        </div>
+        <i class="fas fa-circle-check file-chip-check" id="firmwareChipCheck" style="visibility:hidden"></i>
+      </div>
+      <input id="firmwareInput" type="file" accept=".bin,.hex,.out,.txt,.dfu" style="display:none" {{ 'disabled' if not ui_config.controls.flash_firmware }}>
+      <button type="button" id="firmwareBrowseBtn" class="full-width-btn outline" style="margin-bottom:8px" {{ 'disabled' if not ui_config.controls.flash_firmware }}><i class="fas fa-folder-open"></i> Choose Firmware File</button>
       <div style="display:flex;gap:8px;margin-bottom:8px">
-        <button class="primary" id="flashBtn" {{ 'disabled' if not ui_config.controls.flash_firmware }}><i class="fas fa-arrow-up-from-bracket"></i> Flash Firmware</button>
-        <button id="cancelFlash" style="background:#444;color:#fff;border-radius:6px;padding:8px 10px"><i class="fas fa-xmark"></i> Cancel</button>
+        <button class="primary full-width-btn" id="flashBtn" {{ 'disabled' if not ui_config.controls.flash_firmware }}><i class="fas fa-arrow-up-from-bracket"></i> Flash Firmware</button>
+        <button id="cancelFlash" style="background:#232936;color:#fff;border-radius:6px;padding:8px 10px"><i class="fas fa-xmark"></i> Cancel</button>
       </div>
       <div id="progressBar"><div id="progress"></div></div>
       <div id="flashStatus" style="margin-top:8px;font-family:Roboto Mono;color:#9a9fa4">Status: idle</div>
-    </div>
-
-    <!-- NEW: Factory reset / View SOP card (placed between Firmware and Serial monitor) -->
-    <div class="card">
-      <h3>Quick Actions</h3>
-      <div class="left-controls-row" style="margin-bottom:8px">
-        <!-- Factory Reset (red danger button as requested - option 1) -->
-        <button id="factoryResetBtn" class="danger" {{ 'disabled' if not ui_config.controls.factory_reset }}><i class="fas fa-arrow-rotate-left"></i> Factory Reset</button>
-
-        <!-- View / Download SOP -->
-        <button id="viewSopBtn" class="primary"><i class="fas fa-book"></i> View Manual</button>
-
-        <!-- Power Supply Control -->
-        <button id="powerSupplyBtn" class="primary" style="background:#4fb583; color:#1c1c1f" {{ 'disabled' if not ui_config.controls.power_supply }}><i class="fas fa-power-off"></i> Power Supply OFF</button>
       </div>
-      <div style="font-size:13px;color:#9a9fa4"></div>
-    </div>
 
-    <div class="card" id="serialMonitorCard" style="{{ 'display:none' if not ui_config.controls.serial_monitor_section }}">
-      <h3>Serial Monitor & Connect</h3>
       {% for p in ui_config.serial_ports %}
       {% if p.student_visible %}
-      <div class="serial-slot" data-conn-id="{{ p.id }}" data-fixed-port="{{ p.port }}" data-baud="{{ p.baud }}" data-allow-disconnect="{{ 'true' if p.allow_disconnect else 'false' }}" data-auto-connect="{{ 'true' if p.auto_connect else 'false' }}">
-        <div class="serial-slot-label">{{ p.label }}</div>
-        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-          {% if p.port %}
-          <span class="note" style="color:#9a9fa4;font-size:13px;align-self:center">{{ p.port }}</span>
-          {% endif %}
-          {# Baud is always student-adjustable, even when the admin has fixed the port itself. #}
-          {% set standard_bauds = [300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400] %}
+      <div class="sidebar-section serial-slot" data-conn-id="{{ p.id }}" data-fixed-port="{{ p.port }}" data-baud="{{ p.baud }}" data-allow-disconnect="{{ 'true' if p.allow_disconnect else 'false' }}" data-auto-connect="{{ 'true' if p.auto_connect else 'false' }}">
+        <h4 class="sidebar-section-title">Connection{{ ' — ' + p.label if ui_config.serial_ports|selectattr('student_visible')|list|length > 1 }}</h4>
+        <div class="conn-row" style="padding-top:0"><span>Status</span><span class="conn-value"><span class="status-dot off slot-status-dot"></span><b class="slot-status-text">Disconnected</b></span></div>
+        {% if p.port %}
+        <div class="conn-row"><span>Port</span><span class="conn-value">{{ p.port }}</span></div>
+        {% else %}
+        <div class="conn-row"><span>Port</span><select class="slot-port small-input"></select></div>
+        {% endif %}
+        {% set standard_bauds = [300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400] %}
+        <div class="conn-row"><span>Baud Rate</span>
           <select class="slot-baud small-input">
             {% for b in standard_bauds %}
             <option {{ 'selected' if p.baud == b }}>{{ b }}</option>
             {% endfor %}
             <option {{ 'selected' if p.baud not in standard_bauds }}>custom</option>
           </select>
-          <input class="slot-custom-baud small-input" placeholder="Custom" style="width:80px;{{ 'display:none' if p.baud in standard_bauds }}" value="{{ p.baud if p.baud not in standard_bauds else '' }}">
-          {% if not p.port %}
-          <select class="slot-port small-input" style="width:140px"></select>
-          <button class="slot-refresh" style="background:#333;color:#fff;border-radius:6px;padding:6px 8px" title="Refresh ports"><i class="fas fa-rotate"></i></button>
-          {% endif %}
         </div>
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <button class="slot-connect" style="background:#4fb583;color:#fff" {{ 'disabled' if not ui_config.controls.serial_connect }}><i class="fas fa-plug"></i> Connect</button>
-          <button class="slot-reset" style="background:#d9a044;color:#101018;border-radius:6px" {{ 'disabled' if not ui_config.controls.serial_connect }}><i class="fas fa-arrow-rotate-left"></i> Reset MCU</button>
-          <button class="slot-clear" style="background:#333;color:#fff;border-radius:6px" title="Clear log"><i class="fas fa-broom"></i></button>
-        </div>
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <input class="slot-cmd" placeholder="Type command and press Send" style="flex:1;padding:6px;border-radius:6px;border:none;background:#3a3a3d;color:#3fc6d6">
-          <button class="primary slot-send" title="Send"><i class="fas fa-paper-plane"></i></button>
-        </div>
-        <div class="slot-feedback">waiting for device...</div>
+        <input class="slot-custom-baud small-input full-width-btn" placeholder="Custom baud" style="{{ 'display:none' if p.baud in standard_bauds }};margin-bottom:8px" value="{{ p.baud if p.baud not in standard_bauds else '' }}">
+        {% if not p.port %}
+        <button class="slot-refresh full-width-btn outline" style="margin-bottom:8px" title="Refresh ports"><i class="fas fa-rotate"></i> Refresh Ports</button>
+        {% endif %}
+        <button class="slot-connect full-width-btn" style="background:#4fb583;color:#fff" {{ 'disabled' if not ui_config.controls.serial_connect }}><i class="fas fa-plug"></i> Connect</button>
+        <button class="slot-reset full-width-btn outline" style="margin-top:8px" {{ 'disabled' if not ui_config.controls.serial_connect }}><i class="fas fa-arrow-rotate-left"></i> Reset MCU</button>
       </div>
       {% endif %}
       {% endfor %}
-    </div>
 
+      <div class="sidebar-section">
+      <h4 class="sidebar-section-title">Power</h4>
+      <div class="conn-row" style="padding-top:0"><span>Power Supply</span>
+        <span class="conn-value" style="gap:8px">
+          <b id="powerStateLabel">OFF</b>
+          <button id="powerSupplyBtn" class="toggle-switch" {{ 'disabled' if not ui_config.controls.power_supply }} title="Toggle power supply"><span class="toggle-thumb"></span></button>
+        </span>
+      </div>
+      </div>
+
+      <div class="sidebar-section">
+      <h4 class="sidebar-section-title">Quick Actions</h4>
+      <button id="viewSopBtn" class="primary full-width-btn" style="margin-bottom:8px"><i class="fas fa-book"></i> View Manual</button>
+      <button id="factoryResetBtn" class="danger full-width-btn" {{ 'disabled' if not ui_config.controls.factory_reset }}><i class="fas fa-arrow-rotate-left"></i> Factory Reset</button>
+      </div>
+    </div>
+   </div>
+
+   <div id="panelDynamic" class="sidebar-panel" style="display:none">
     <div class="card" id="dynamicControlsCard" style="{{ 'display:none' if not ui_config.defaults.dynamic_controls_visible }}">
       <h3>Dynamic Controls</h3>
       <div style="display:flex;gap:8px;margin-bottom:8px">
@@ -224,26 +333,88 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
       <div id="dynamicControls"></div>
       <div style="margin-top:8px;color:#9a9fa4;font-size:13px">Click a control's remove button to delete it.</div>
     </div>
+   </div>
+
+   {% if debuggable %}
+   <div id="panelDebug" class="sidebar-panel" style="display:none">
+    <div class="card">
+      <div class="sidebar-section">
+        <h4 class="sidebar-section-title">Debug</h4>
+        <div class="conn-row" style="padding-top:0"><span>Status</span><span class="conn-value"><span class="status-dot off" id="debugStatusDot"></span><b id="debugStatusText">Disconnected</b></span></div>
+        <div class="conn-row"><span>Board</span><span class="conn-value">{{ board_type }}</span></div>
+        <button id="debugConnectBtn" class="primary full-width-btn"><i class="fas fa-plug"></i> Connect</button>
+      </div>
+      <div class="sidebar-section">
+        <h4 class="sidebar-section-title">Execution</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button id="debugContinueBtn" class="primary" disabled><i class="fas fa-play"></i> Continue</button>
+          <button id="debugPauseBtn" class="primary" disabled><i class="fas fa-pause"></i> Pause</button>
+          <button id="debugStepBtn" class="primary" disabled><i class="fas fa-shoe-prints"></i> Step</button>
+          <button id="debugStepOverBtn" class="primary" disabled><i class="fas fa-angles-right"></i> Step Over</button>
+        </div>
+        <button id="debugResetBtn" class="full-width-btn outline" style="margin-top:8px" disabled><i class="fas fa-arrow-rotate-left"></i> Reset</button>
+        <p class="note" style="margin-top:10px" id="debugStoppedInfo"></p>
+      </div>
+      <div class="sidebar-section">
+        <h4 class="sidebar-section-title">Symbols</h4>
+        <div class="file-chip" id="debugElfChip">
+          <i class="fas fa-file"></i>
+          <div class="file-chip-info">
+            <span id="debugElfChipName">No file chosen</span>
+            <span id="debugElfChipSize" class="file-chip-size"></span>
+          </div>
+          <i class="fas fa-circle-check file-chip-check" id="debugElfChipCheck" style="visibility:hidden"></i>
+        </div>
+        <input id="debugElfInput" type="file" accept=".elf,.out" style="display:none">
+        <button type="button" id="debugElfBrowseBtn" class="full-width-btn outline"><i class="fas fa-folder-open"></i> Choose ELF File</button>
+        <button id="debugLoadSymbolsBtn" class="primary full-width-btn" style="margin-top:6px" disabled><i class="fas fa-file-import"></i> Upload &amp; Load Symbols</button>
+        <p class="note" id="debugSymbolsStatus">no symbols</p>
+      </div>
+      <div class="sidebar-section">
+        <h4 class="sidebar-section-title">Breakpoints</h4>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="debugBpAddr" placeholder="0x08000100" style="flex:1;min-width:0;padding:6px;border-radius:6px;border:none;background:#1a1f2b;color:#3b82f6">
+          <button id="debugBpSetBtn" class="primary" disabled title="Set breakpoint"><i class="fas fa-circle-dot"></i></button>
+        </div>
+        <ul id="debugBpList" class="debug-list"></ul>
+      </div>
+      <div class="sidebar-section">
+        <h4 class="sidebar-section-title">Variables <span style="text-transform:none;font-weight:400;color:#9a9fa4">(locals)</span></h4>
+        <div id="debugVariablesList" class="debug-kv-list"></div>
+      </div>
+      <div class="sidebar-section">
+        <h4 class="sidebar-section-title">Watch</h4>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="debugWatchExpr" placeholder="ledState || count+1" style="flex:1;min-width:0;padding:6px;border-radius:6px;border:none;background:#1a1f2b;color:#3b82f6">
+          <button id="debugWatchAddBtn" class="primary" disabled title="Add watch"><i class="fas fa-plus"></i></button>
+        </div>
+        <div id="debugWatchList" class="debug-kv-list"></div>
+      </div>
+    </div>
+   </div>
+   {% endif %}
   </div>
 
+  <div class="resize-handle-v" id="sidebarHandle" title="Drag to resize"><i class="fas fa-grip-lines-vertical"></i></div>
+
   <div class="right-column">
-  <div class="chart-video-row">
+  <div class="chart-video-row" id="chartVideoRow">
     <div class="card" id="chartCard" style="{{ 'display:none' if not (ui_config.controls.serial_plotter or ui_config.controls.oscilloscope) }}">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:10px;">
         <h3 style="margin:0;">Real-time Sensor Data Chart</h3>
         <div style="display:flex; gap:8px; align-items:center;">
           <span style="font-size:11px; color:#888; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px;">Current View:</span>
-          <select id="mainUiMode" class="small-input" style="background: #3fc6d6; color: #000; font-weight: bold; width: 140px;">
+          <select id="mainUiMode" class="small-input" style="background: #3b82f6; color: #000; font-weight: bold; width: 140px;">
             {% if ui_config.controls.serial_plotter %}<option value="plotter" {{ 'selected' if ui_config.defaults.main_view == 'plotter' }}>Serial Plotter</option>{% endif %}
             {% if ui_config.controls.oscilloscope %}<option value="oscilloscope" {{ 'selected' if ui_config.defaults.main_view == 'oscilloscope' }}>Oscilloscope</option>{% endif %}
           </select>
           <!-- Buttons moved inside flex container to avoid overlap -->
           <div id="mainZoomButtons" style="display:flex; gap:4px;">
             <button id="chartZoomReset" style="background:#d9a044; color:#101018; font-weight:700; padding:6px 9px; border-radius:4px; display:inline-flex; align-items:center;" title="Reset Zoom"><i class="fas fa-arrows-rotate"></i></button>
-            <button id="chartZoomOut" style="background:#3fc6d6; color:#041726; font-weight:700; padding:6px 9px; border-radius:4px; display:inline-flex; align-items:center;" title="Zoom Out"><i class="fas fa-magnifying-glass-minus"></i></button>
-            <button id="chartZoomIn" style="background:#3fc6d6; color:#041726; font-weight:700; padding:6px 9px; border-radius:4px; display:inline-flex; align-items:center;" title="Zoom In"><i class="fas fa-magnifying-glass-plus"></i></button>
+            <button id="chartZoomOut" style="background:#3b82f6; color:#041726; font-weight:700; padding:6px 9px; border-radius:4px; display:inline-flex; align-items:center;" title="Zoom Out"><i class="fas fa-magnifying-glass-minus"></i></button>
+            <button id="chartZoomIn" style="background:#3b82f6; color:#041726; font-weight:700; padding:6px 9px; border-radius:4px; display:inline-flex; align-items:center;" title="Zoom In"><i class="fas fa-magnifying-glass-plus"></i></button>
           </div>
-          <button id="expandChartBtn" style="background:#3fc6d6; color:#041726; font-weight:700; padding:6px 9px; border-radius:4px; display:inline-flex; align-items:center;" title="Open Chart in New Tab"><i class="fas fa-expand"></i></button>
+          <button id="expandChartBtn" style="background:#3b82f6; color:#041726; font-weight:700; padding:6px 9px; border-radius:4px; display:inline-flex; align-items:center;" title="Open Chart in New Tab"><i class="fas fa-expand"></i></button>
         </div>
       </div>
       <!-- Removed original absolute buttons -->
@@ -273,7 +444,7 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
               <option value="">(Disabled)</option>
             </select>
           </label>
-          <button id="exportCSV" style="background:#444;color:#fff;border-radius:6px;padding:8px 10px;height:34px">Export CSV</button>
+          <button id="exportCSV" style="background:#232936;color:#fff;border-radius:6px;padding:8px 10px;height:34px">Export CSV</button>
         </div>
 
         <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
@@ -334,11 +505,13 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
         </div>
       </div>
 
-      <div style="border-radius:8px;overflow:hidden;background:#0e1116;padding:6px; height:320px; position:relative;">
+      <div style="border-radius:8px;overflow:hidden;background:#0e1116;padding:6px; position:relative; flex:1; min-height:120px;">
         <canvas id="mainChart"></canvas>
         <canvas id="mainOscCanvas" style="display:none; width:100%; height:100%;"></canvas>
       </div>
     </div>
+
+    <div class="resize-handle-v" id="chartVideoHandle" title="Drag to resize"><i class="fas fa-grip-lines-vertical"></i></div>
 
     <div class="card">
       <h3>Live Video Feed</h3>
@@ -361,10 +534,240 @@ button{padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
       <div style="margin-top:8px;color:#9a9fa4"></div>
     </div>
   </div>
+
+  <div class="resize-handle-h" id="rowSerialHandle" title="Drag to resize"><i class="fas fa-grip-lines"></i></div>
+
+  <div class="card" id="serialMonitorCard" style="{{ 'display:none' if not ui_config.controls.serial_monitor_section }}">
+      {% if debuggable %}
+      <div class="panel-tabs">
+        <button id="tabSerialMonitor" class="panel-tab active">Serial Monitor</button>
+        <button id="tabDebugConsole" class="panel-tab">Debug Console</button>
+        <button id="tabRegisters" class="panel-tab">Registers</button>
+        <button id="tabDisasm" class="panel-tab">Disassembly</button>
+        <button id="tabMemory" class="panel-tab">Memory</button>
+      </div>
+      {% else %}
+      <h3>Serial Monitor</h3>
+      {% endif %}
+      <div id="serialMonitorTab">
+      {% for p in ui_config.serial_ports %}
+      {% if p.student_visible %}
+      <div class="serial-monitor-block">
+        {% if ui_config.serial_ports|selectattr('student_visible')|list|length > 1 %}
+        <div class="serial-slot-label">{{ p.label }}</div>
+        {% endif %}
+        <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+          <button class="icon-btn" id="clear-{{ p.id }}" style="background:#1a1f2b;color:#fff" title="Clear log"><i class="fas fa-broom"></i></button>
+        </div>
+        <div class="slot-feedback" id="feedback-{{ p.id }}">waiting for device...</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input class="slot-cmd" id="cmd-{{ p.id }}" placeholder="Type command and press Send" style="flex:1;padding:6px;border-radius:6px;border:none;background:#1a1f2b;color:#3b82f6">
+          <button class="primary" id="send-{{ p.id }}" title="Send"><i class="fas fa-paper-plane"></i></button>
+        </div>
+      </div>
+      {% endif %}
+      {% endfor %}
+      </div>
+      {% if debuggable %}
+      <div id="debugConsoleTab" style="display:none;flex:1;min-height:0;flex-direction:column">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+          <button class="icon-btn" id="debugConsoleClear" style="background:#1a1f2b;color:#fff" title="Clear console"><i class="fas fa-broom"></i></button>
+        </div>
+        <div class="slot-feedback" id="debugConsoleLog">no debug session active...</div>
+      </div>
+      <div id="registersTab" style="display:none;flex:1;min-height:0;flex-direction:column;overflow:auto">
+        <table class="debug-table"><tbody id="registersTableBody"></tbody></table>
+      </div>
+      <div id="disasmTab" style="display:none;flex:1;min-height:0;flex-direction:column">
+        <div style="display:flex;gap:8px;margin-bottom:6px;flex-shrink:0">
+          <input type="text" id="debugDisasmAddr" placeholder="pc" style="width:130px;padding:6px;border-radius:6px;border:none;background:#1a1f2b;color:#3b82f6">
+          <input type="text" id="debugDisasmCount" value="16" style="width:60px;padding:6px;border-radius:6px;border:none;background:#1a1f2b;color:#3b82f6">
+          <button id="debugDisasmRefreshBtn" class="primary"><i class="fas fa-arrows-rotate"></i> Refresh</button>
+        </div>
+        <div style="flex:1;min-height:0;overflow:auto">
+          <table class="debug-table"><tbody id="disasmTableBody"></tbody></table>
+        </div>
+      </div>
+      <div id="memoryTab" style="display:none;flex:1;min-height:0;flex-direction:column">
+        <div style="display:flex;gap:8px;margin-bottom:6px;flex-shrink:0">
+          <input type="text" id="debugMemAddr" placeholder="0x20000000" style="width:150px;padding:6px;border-radius:6px;border:none;background:#1a1f2b;color:#3b82f6">
+          <input type="text" id="debugMemLength" value="64" style="width:70px;padding:6px;border-radius:6px;border:none;background:#1a1f2b;color:#3b82f6">
+          <button id="debugMemReadBtn" class="primary"><i class="fas fa-magnifying-glass"></i> Read</button>
+        </div>
+        <pre class="slot-feedback" id="debugMemDump" style="flex:1;min-height:0;overflow:auto"></pre>
+      </div>
+      {% endif %}
+  </div>
   </div>
 </div>
 
 <script>
+/* ----------------- Resizable panels (drag handles, like a real IDE) -----------------
+   Chart height used to just be whatever its content needed (a fixed-height
+   canvas wrapper), which is also *why* switching Serial Plotter <-> Oscilloscope
+   changed the tile's height — the two view's control rows aren't the same
+   height, and the video card was stretched to match whatever height that
+   produced. Giving the row an explicit, drag-adjustable height instead of a
+   content-derived one fixes both things at once: size is stable across mode
+   switches, and it's actually resizable. */
+(function initResizablePanels(){
+  const row = document.getElementById('chartVideoRow');
+  const chartCard = document.getElementById('chartCard');
+  const vHandle = document.getElementById('chartVideoHandle');
+  const hHandle = document.getElementById('rowSerialHandle');
+  const sidebarPanels = document.getElementById('sidebarPanels');
+  const sidebarHandle = document.getElementById('sidebarHandle');
+
+  const MIN_W = 320, MIN_H = 220, MIN_SIDEBAR_W = 260, MAX_SIDEBAR_W = 640;
+  const STORE_W = 'labChartWidthPx', STORE_H = 'labRowHeightPx', STORE_SIDEBAR_W = 'labSidebarWidthPx';
+
+  function afterResize(){
+    // Chart.js (responsive:true) and the oscilloscope canvas both need to know
+    // their container changed — Chart.js's own ResizeObserver would catch up
+    // eventually, but calling these directly keeps the redraw in step with
+    // the drag instead of lagging a beat behind it.
+    if (typeof chart !== 'undefined' && chart && chart.resize) chart.resize();
+    if (typeof resizeMainOscCanvas === 'function') resizeMainOscCanvas();
+  }
+
+  function restoreSaved(){
+    try {
+      const w = parseInt(localStorage.getItem(STORE_W), 10);
+      const h = parseInt(localStorage.getItem(STORE_H), 10);
+      const sw = parseInt(localStorage.getItem(STORE_SIDEBAR_W), 10);
+      if (chartCard && w) chartCard.style.flex = '0 0 ' + w + 'px';
+      if (row && h) row.style.height = h + 'px';
+      if (sidebarPanels && sw) sidebarPanels.style.width = sw + 'px';
+    } catch (e) { /* localStorage unavailable (private mode etc.) — just use defaults */ }
+  }
+  restoreSaved();
+
+  function wireDrag(handle, onMove, onEnd){
+    if (!handle) return;
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      handle.classList.add('dragging');
+      const startX = e.clientX, startY = e.clientY;
+      function move(ev){ onMove(ev.clientX - startX, ev.clientY - startY); afterResize(); }
+      function up(){
+        handle.classList.remove('dragging');
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', up);
+        if (onEnd) onEnd();
+      }
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', up);
+    });
+  }
+
+  if (chartCard && row) {
+    let startWidth = 0;
+    wireDrag(vHandle,
+      (dx) => {
+        if (!startWidth) startWidth = chartCard.getBoundingClientRect().width;
+        const newWidth = Math.max(MIN_W, Math.round(startWidth + dx));
+        chartCard.style.flex = '0 0 ' + newWidth + 'px';
+      },
+      () => {
+        startWidth = 0;
+        try { localStorage.setItem(STORE_W, Math.round(chartCard.getBoundingClientRect().width)); } catch (e) {}
+      }
+    );
+  }
+
+  if (row) {
+    let startHeight = 0;
+    wireDrag(hHandle,
+      (dx, dy) => {
+        if (!startHeight) startHeight = row.getBoundingClientRect().height;
+        const newHeight = Math.max(MIN_H, Math.round(startHeight + dy));
+        row.style.height = newHeight + 'px';
+      },
+      () => {
+        startHeight = 0;
+        try { localStorage.setItem(STORE_H, Math.round(row.getBoundingClientRect().height)); } catch (e) {}
+      }
+    );
+  }
+
+  // Same drag-to-resize as the chart|video split, for the sidebar's width.
+  // Dragging while the sidebar is collapsed (width:0) doesn't do anything
+  // useful, so the handle just doesn't fire in that case.
+  if (sidebarPanels) {
+    let startSidebarWidth = 0;
+    if (sidebarHandle) {
+      sidebarHandle.addEventListener('pointerdown', () => sidebarPanels.classList.add('no-transition'));
+    }
+    wireDrag(sidebarHandle,
+      (dx) => {
+        if (sidebarPanels.classList.contains('collapsed')) return;
+        if (!startSidebarWidth) startSidebarWidth = sidebarPanels.getBoundingClientRect().width;
+        const newWidth = Math.min(MAX_SIDEBAR_W, Math.max(MIN_SIDEBAR_W, Math.round(startSidebarWidth + dx)));
+        sidebarPanels.style.width = newWidth + 'px';
+      },
+      () => {
+        startSidebarWidth = 0;
+        sidebarPanels.classList.remove('no-transition');
+        if (sidebarPanels.classList.contains('collapsed')) return;
+        try { localStorage.setItem(STORE_SIDEBAR_W, Math.round(sidebarPanels.getBoundingClientRect().width)); } catch (e) {}
+      }
+    );
+  }
+})();
+
+/* ----------------- Sidebar rail: swap panels, collapse ----------------- */
+(function initSidebarRail(){
+  const railSetup = document.getElementById('railSetup');
+  const railDynamic = document.getElementById('railDynamic');
+  const railDebug = document.getElementById('railDebug');
+  const panelSetup = document.getElementById('panelSetup');
+  const panelDynamic = document.getElementById('panelDynamic');
+  const panelDebug = document.getElementById('panelDebug');
+  const sidebarPanels = document.getElementById('sidebarPanels');
+  const collapseBtn = document.getElementById('sidebarCollapseBtn');
+  if (!sidebarPanels || !collapseBtn) return;
+
+  // A drag-resize (or a width restored from localStorage on load) sets an
+  // inline style.width on this element — which always wins over a CSS class
+  // rule regardless of specificity, so `.collapsed{width:0}` alone can't
+  // actually collapse it once an inline width exists. Explicitly clearing
+  // and restoring that inline width on collapse/expand is what makes the
+  // class-based collapse actually take effect.
+  function setCollapsed(collapsed){
+    sidebarPanels.classList.toggle('collapsed', collapsed);
+    if (collapsed) {
+      sidebarPanels.style.width = '';
+    } else {
+      try {
+        const saved = parseInt(localStorage.getItem('labSidebarWidthPx'), 10);
+        if (saved) sidebarPanels.style.width = saved + 'px';
+      } catch (e) {}
+    }
+    collapseBtn.innerHTML = collapsed ? '<i class="fas fa-angles-right"></i>' : '<i class="fas fa-angles-left"></i>';
+    collapseBtn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  }
+
+  function showPanel(which){
+    if (panelSetup) panelSetup.style.display = which === 'setup' ? 'flex' : 'none';
+    if (panelDynamic) panelDynamic.style.display = which === 'dynamic' ? 'flex' : 'none';
+    if (panelDebug) panelDebug.style.display = which === 'debug' ? 'flex' : 'none';
+    if (railSetup) railSetup.classList.toggle('active', which === 'setup');
+    if (railDynamic) railDynamic.classList.toggle('active', which === 'dynamic');
+    if (railDebug) railDebug.classList.toggle('active', which === 'debug');
+    // Selecting a destination always reveals the sidebar, even if it was collapsed.
+    setCollapsed(false);
+  }
+
+  if (railSetup) railSetup.addEventListener('click', () => showPanel('setup'));
+  if (railDynamic) railDynamic.addEventListener('click', () => showPanel('dynamic'));
+  if (railDebug) railDebug.addEventListener('click', () => showPanel('debug'));
+
+  collapseBtn.addEventListener('click', () => {
+    setCollapsed(!sidebarPanels.classList.contains('collapsed'));
+  });
+})();
+
 const sessionDuration = {{ session_duration | tojson }};
 const sessionEndTimeFromServer = {{ session_end_time | tojson }};
 const boardTypeFromServer = {{ board_type | tojson }};
@@ -390,6 +793,381 @@ const socket = io.connect(window.location.origin, {
   query: { key: sessionKey },
 });
 let currentUiConfig = uiConfigFromServer; // kept in sync by applyUiConfig() on every live update
+
+(function initDebugger(){
+  const connectBtn = document.getElementById('debugConnectBtn');
+  if (!connectBtn) return; // board_type has no debug profile -- panel wasn't rendered
+
+  const statusDot = document.getElementById('debugStatusDot');
+  const statusText = document.getElementById('debugStatusText');
+  const stoppedInfo = document.getElementById('debugStoppedInfo');
+  const consoleLog = document.getElementById('debugConsoleLog');
+  const consoleClearBtn = document.getElementById('debugConsoleClear');
+  const elfInput = document.getElementById('debugElfInput');
+  const elfBrowseBtn = document.getElementById('debugElfBrowseBtn');
+  const elfChipName = document.getElementById('debugElfChipName');
+  const elfChipSize = document.getElementById('debugElfChipSize');
+  const elfChipCheck = document.getElementById('debugElfChipCheck');
+  const loadSymbolsBtn = document.getElementById('debugLoadSymbolsBtn');
+  const symbolsStatus = document.getElementById('debugSymbolsStatus');
+  const bpAddrInput = document.getElementById('debugBpAddr');
+  const bpSetBtn = document.getElementById('debugBpSetBtn');
+  const bpList = document.getElementById('debugBpList');
+  const variablesList = document.getElementById('debugVariablesList');
+  const watchExprInput = document.getElementById('debugWatchExpr');
+  const watchAddBtn = document.getElementById('debugWatchAddBtn');
+  const watchList = document.getElementById('debugWatchList');
+  const registersTableBody = document.getElementById('registersTableBody');
+  const disasmTableBody = document.getElementById('disasmTableBody');
+  const disasmAddrInput = document.getElementById('debugDisasmAddr');
+  const disasmCountInput = document.getElementById('debugDisasmCount');
+  const disasmRefreshBtn = document.getElementById('debugDisasmRefreshBtn');
+  const memAddrInput = document.getElementById('debugMemAddr');
+  const memLengthInput = document.getElementById('debugMemLength');
+  const memReadBtn = document.getElementById('debugMemReadBtn');
+  const memDump = document.getElementById('debugMemDump');
+
+  const execButtons = ['debugContinueBtn', 'debugPauseBtn', 'debugStepBtn', 'debugStepOverBtn', 'debugResetBtn']
+    .map(id => document.getElementById(id));
+  const [continueBtn, pauseBtn, stepBtn, stepOverBtn, resetBtn] = execButtons;
+  // Continue/Step/Step Over/Pause toggle on the target's running/stopped
+  // state (see setRunning) instead of the blanket connected-only gating
+  // everything else here uses -- Reset works in either state, so it stays
+  // in the blanket list alongside Set Breakpoint/Add Watch.
+  const gatedButtons = [resetBtn, bpSetBtn, watchAddBtn].filter(Boolean);
+
+  let connected = false;
+  let running = false;
+  let connectTimeout = null;
+  let currentPc = null;
+  const breakpoints = new Map(); // id -> addr
+  const watches = new Map();     // name -> {expr, type, value}
+
+  function setRunning(isRunning){
+    running = isRunning;
+    if (continueBtn) continueBtn.disabled = !connected || isRunning;
+    if (stepBtn) stepBtn.disabled = !connected || isRunning;
+    if (stepOverBtn) stepOverBtn.disabled = !connected || isRunning;
+    if (pauseBtn) pauseBtn.disabled = !connected || !isRunning;
+  }
+
+  function logConsole(text){
+    if (!consoleLog) return;
+    consoleLog.textContent += text.endsWith('\n') ? text : text + '\n';
+    consoleLog.scrollTop = consoleLog.scrollHeight;
+  }
+
+  function setConnected(isConnected){
+    connected = isConnected;
+    statusText.textContent = isConnected ? 'Connected' : 'Disconnected';
+    statusDot.classList.toggle('on', isConnected);
+    statusDot.classList.toggle('off', !isConnected);
+    connectBtn.disabled = false;
+    connectBtn.innerHTML = isConnected
+      ? '<i class="fas fa-plug-circle-xmark"></i> Disconnect'
+      : '<i class="fas fa-plug"></i> Connect';
+    gatedButtons.forEach(b => { b.disabled = !isConnected; });
+    updateLoadSymbolsBtn();
+    setRunning(false); // a fresh session (or a dropped one) starts/ends stopped, not running
+    if (!isConnected) {
+      if (stoppedInfo) stoppedInfo.textContent = '';
+      if (symbolsStatus) symbolsStatus.textContent = 'no symbols';
+      currentPc = null;
+      breakpoints.clear();
+      watches.clear();
+      renderBreakpoints();
+      renderWatches();
+      if (variablesList) variablesList.innerHTML = '';
+      if (registersTableBody) registersTableBody.innerHTML = '';
+      if (disasmTableBody) disasmTableBody.innerHTML = '';
+      if (memDump) memDump.textContent = '';
+    }
+  }
+
+  connectBtn.addEventListener('click', () => {
+    if (connected) {
+      socket.emit('debug_stop', {});
+      return;
+    }
+    connectBtn.disabled = true;
+    socket.emit('debug_start', { board_id: boardTypeFromServer });
+    clearTimeout(connectTimeout);
+    connectTimeout = setTimeout(() => {
+      if (!connected) {
+        connectBtn.disabled = false;
+        logConsole('error: timed out waiting for the Lab Pi to start the debug session');
+      }
+    }, 8000);
+  });
+
+  // Continue/Step/Step Over all only report back later via an async 'stopped'
+  // event (see _FIRE_AND_FORGET in ws_protocol.py) -- mark running right away
+  // so the buttons that only make sense while stopped grey out immediately,
+  // not just once the (possibly momentary, for a single step) reply arrives.
+  if (continueBtn) continueBtn.addEventListener('click', () => { socket.emit('debug_command', { cmd: 'continue' }); setRunning(true); });
+  if (stepBtn) stepBtn.addEventListener('click', () => { socket.emit('debug_command', { cmd: 'step' }); setRunning(true); });
+  if (stepOverBtn) stepOverBtn.addEventListener('click', () => { socket.emit('debug_command', { cmd: 'step_over' }); setRunning(true); });
+  if (pauseBtn) pauseBtn.addEventListener('click', () => socket.emit('debug_command', { cmd: 'pause' }));
+  if (resetBtn) resetBtn.addEventListener('click', () => socket.emit('debug_command', { cmd: 'reset' }));
+  if (consoleClearBtn) consoleClearBtn.addEventListener('click', () => { if (consoleLog) consoleLog.textContent = ''; });
+
+  // Students have no visibility into the Lab Pi's filesystem, so symbols
+  // come from an upload (mirroring the Flash Firmware file chip), never a
+  // typed path -- see debug_upload_elf()/handle_debug_load_symbols() server-side.
+  function updateLoadSymbolsBtn(){
+    if (!loadSymbolsBtn) return;
+    const hasFile = !!(elfInput && elfInput.files && elfInput.files[0]);
+    loadSymbolsBtn.disabled = !connected || !hasFile;
+  }
+  if (elfBrowseBtn && elfInput) {
+    elfBrowseBtn.addEventListener('click', () => elfInput.click());
+    elfInput.addEventListener('change', () => {
+      const file = elfInput.files[0];
+      if (file) {
+        elfChipName.textContent = file.name;
+        elfChipSize.textContent = (file.size / 1024).toFixed(1) + ' KB';
+        elfChipCheck.style.visibility = 'visible';
+      } else {
+        elfChipName.textContent = 'No file chosen';
+        elfChipSize.textContent = '';
+        elfChipCheck.style.visibility = 'hidden';
+      }
+      updateLoadSymbolsBtn();
+    });
+  }
+
+  function loadSymbols(){
+    const file = elfInput && elfInput.files[0];
+    if (!file) return;
+    loadSymbolsBtn.disabled = true;
+    if (symbolsStatus) symbolsStatus.textContent = 'uploading...';
+    const fd = new FormData();
+    fd.append('elf', file);
+    fd.append('session_key', sessionKey);
+    fetch('/debug/upload-elf', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(j => {
+        if (j.filename) {
+          socket.emit('debug_load_symbols', {});
+        } else {
+          if (symbolsStatus) symbolsStatus.textContent = 'no symbols';
+          logConsole('error: ' + (j.status || 'ELF upload failed'));
+        }
+        updateLoadSymbolsBtn();
+      })
+      .catch(e => {
+        if (symbolsStatus) symbolsStatus.textContent = 'no symbols';
+        logConsole('error: ELF upload failed: ' + e);
+        updateLoadSymbolsBtn();
+      });
+  }
+  if (loadSymbolsBtn) loadSymbolsBtn.addEventListener('click', loadSymbols);
+
+  function renderRegisters(values){
+    if (!registersTableBody) return;
+    registersTableBody.innerHTML = Object.entries(values || {})
+      .map(([name, value]) => `<tr><td class="reg-name">${name}</td><td>${value}</td></tr>`)
+      .join('');
+  }
+
+  function requestDisasm(addr){
+    const count = parseInt((disasmCountInput && disasmCountInput.value) || '16', 10);
+    socket.emit('debug_command', { cmd: 'disassemble', addr: addr, count: count });
+  }
+  if (disasmRefreshBtn) disasmRefreshBtn.addEventListener('click', () => {
+    requestDisasm((disasmAddrInput && disasmAddrInput.value) || currentPc);
+  });
+
+  function renderDisasm(lines){
+    if (!disasmTableBody) return;
+    disasmTableBody.innerHTML = (lines || [])
+      .map(l => {
+        const isPc = currentPc && l.address === currentPc;
+        return `<tr class="${isPc ? 'pc-row' : ''}"><td>${l.address}</td><td>${l['func-name'] || ''}+${l.offset || 0}</td><td>${l.inst}</td></tr>`;
+      })
+      .join('');
+  }
+
+  if (memReadBtn) memReadBtn.addEventListener('click', () => {
+    const addr = (memAddrInput && memAddrInput.value || '').trim();
+    if (!addr) return;
+    const length = parseInt((memLengthInput && memLengthInput.value) || '64', 10);
+    socket.emit('debug_command', { cmd: 'read_memory', addr: addr, length: length });
+  });
+
+  function renderMemory(addr, bytesHex){
+    if (!memDump) return;
+    const bytes = (bytesHex || '').trim().split(/\s+/).filter(Boolean);
+    let out = '';
+    for (let i = 0; i < bytes.length; i += 16) {
+      const row = bytes.slice(i, i + 16);
+      const hex = row.join(' ').padEnd(47, ' ');
+      const ascii = row.map(b => {
+        const code = parseInt(b, 16);
+        return code >= 32 && code < 127 ? String.fromCharCode(code) : '.';
+      }).join('');
+      out += `${addr} +${i.toString(16).padStart(4, '0')}  ${hex}  ${ascii}\n`;
+    }
+    memDump.textContent = out;
+  }
+
+  function renderVariables(variables){
+    if (!variablesList) return;
+    variablesList.innerHTML = (variables || [])
+      .map(v => `<div class="debug-kv-row"><span class="debug-kv-name">${v.name}${v.type ? ' <span style="opacity:.6">(' + v.type + ')</span>' : ''}</span><span class="debug-kv-value">${v.value ?? ''}</span></div>`)
+      .join('');
+  }
+
+  function addWatch(){
+    const expr = (watchExprInput && watchExprInput.value || '').trim();
+    if (!expr) return;
+    socket.emit('debug_command', { cmd: 'add_watch', expr: expr });
+    watchExprInput.value = '';
+  }
+  if (watchAddBtn) watchAddBtn.addEventListener('click', addWatch);
+
+  function handleWatchEvent(payload){
+    if (payload.action === 'added') {
+      if (!payload.name) {
+        logConsole(`add watch failed: ${payload.message || 'invalid expression'}`);
+        return;
+      }
+      watches.set(payload.name, { expr: payload.expr, type: payload.type, value: payload.value });
+    } else if (payload.action === 'removed') {
+      watches.delete(payload.name);
+    }
+    renderWatches();
+  }
+
+  function handleWatchUpdate(changes){
+    for (const change of (changes || [])) {
+      const existing = watches.get(change.name);
+      if (existing) existing.value = change.value;
+    }
+    renderWatches();
+  }
+
+  function renderWatches(){
+    if (!watchList) return;
+    watchList.innerHTML = [...watches.entries()]
+      .map(([name, w]) => `<div class="debug-kv-row"><span class="debug-kv-name">${w.expr}${w.type ? ' <span style="opacity:.6">(' + w.type + ')</span>' : ''}</span><span class="debug-kv-value">${w.value ?? ''} <button data-remove-watch="${name}" title="Remove"><i class="fas fa-xmark"></i></button></span></div>`)
+      .join('');
+    watchList.querySelectorAll('[data-remove-watch]').forEach(btn => {
+      btn.addEventListener('click', () => socket.emit('debug_command', { cmd: 'remove_watch', name: btn.dataset.removeWatch }));
+    });
+  }
+
+  if (bpSetBtn) bpSetBtn.addEventListener('click', () => {
+    const addr = (bpAddrInput && bpAddrInput.value || '').trim();
+    if (!addr) return;
+    socket.emit('debug_command', { cmd: 'set_breakpoint', addr: addr });
+  });
+
+  function handleBreakpointEvent(payload){
+    if (payload.action === 'set') {
+      breakpoints.set(payload.id, payload.addr);
+    } else if (payload.action === 'removed') {
+      breakpoints.delete(payload.id);
+    }
+    renderBreakpoints();
+  }
+
+  function renderBreakpoints(){
+    if (!bpList) return;
+    bpList.innerHTML = [...breakpoints.entries()]
+      .map(([id, addr]) => `<li>#${id} @ ${addr} <button data-remove-bp="${id}" title="Remove"><i class="fas fa-xmark"></i></button></li>`)
+      .join('');
+    bpList.querySelectorAll('[data-remove-bp]').forEach(btn => {
+      btn.addEventListener('click', () => socket.emit('debug_command', { cmd: 'remove_breakpoint', id: parseInt(btn.dataset.removeBp, 10) }));
+    });
+  }
+
+  socket.on('debug_event', (payload) => {
+    if (!payload) return;
+    clearTimeout(connectTimeout);
+    switch (payload.event) {
+      case 'session_started':
+        setConnected(true);
+        logConsole(`session started (${payload.board_id}${payload.mock ? ', mock mode' : ''})`);
+        break;
+      case 'session_stopped':
+        setConnected(false);
+        logConsole('session stopped');
+        break;
+      case 'stopped':
+        currentPc = payload.pc;
+        setRunning(false);
+        if (stoppedInfo) {
+          stoppedInfo.textContent = payload.file
+            ? `Stopped: ${payload.reason} @ ${payload.pc} (${payload.file}:${payload.line})`
+            : `Stopped: ${payload.reason} @ ${payload.pc}`;
+        }
+        logConsole(payload.file ? `stopped: ${payload.reason} @ ${payload.pc} (${payload.file}:${payload.line})` : `stopped: ${payload.reason} @ ${payload.pc}`);
+        // Refresh every panel on each stop, same as the standalone prototype.
+        socket.emit('debug_command', { cmd: 'read_registers' });
+        requestDisasm(payload.pc);
+        socket.emit('debug_command', { cmd: 'read_locals' });
+        socket.emit('debug_command', { cmd: 'update_watches' });
+        break;
+      case 'registers':
+        renderRegisters(payload.values);
+        break;
+      case 'memory':
+        renderMemory(payload.addr, payload.bytes);
+        break;
+      case 'disasm':
+        renderDisasm(payload.lines);
+        break;
+      case 'breakpoint':
+        handleBreakpointEvent(payload);
+        break;
+      case 'locals':
+        renderVariables(payload.variables);
+        break;
+      case 'watch':
+        handleWatchEvent(payload);
+        break;
+      case 'watch_update':
+        handleWatchUpdate(payload.changes);
+        break;
+      case 'console':
+        logConsole(payload.text || '');
+        if (symbolsStatus && payload.text && payload.text.startsWith('symbols loaded')) {
+          symbolsStatus.textContent = 'symbols loaded';
+        }
+        break;
+      case 'error':
+        connectBtn.disabled = false;
+        logConsole('error: ' + payload.message);
+        if (symbolsStatus && payload.message && payload.message.toLowerCase().includes('symbol')) {
+          symbolsStatus.textContent = 'no symbols';
+        }
+        break;
+      default:
+        break;
+    }
+  });
+
+  // Serial Monitor / Debug Console / Registers / Disassembly / Memory tab
+  // strip (VS-Code-style panel switcher) -- exactly one content pane visible.
+  const tabs = [
+    { btn: 'tabSerialMonitor', pane: 'serialMonitorTab' },
+    { btn: 'tabDebugConsole', pane: 'debugConsoleTab' },
+    { btn: 'tabRegisters', pane: 'registersTab' },
+    { btn: 'tabDisasm', pane: 'disasmTab' },
+    { btn: 'tabMemory', pane: 'memoryTab' },
+  ].map(t => ({ btn: document.getElementById(t.btn), pane: document.getElementById(t.pane) }))
+   .filter(t => t.btn && t.pane);
+
+  function showTab(target){
+    tabs.forEach(t => {
+      const active = t === target;
+      t.btn.classList.toggle('active', active);
+      t.pane.style.display = active ? 'flex' : 'none';
+    });
+  }
+  tabs.forEach(t => t.btn.addEventListener('click', () => showTab(t)));
+})();
 
 const BASE_URL = window.location.origin;
 
@@ -552,6 +1330,29 @@ socket.on('osc_settings_sync', (data) => {
   }
 });
 
+/* ----------------- Firmware file chip ----------------- */
+(function initFirmwareChip(){
+  const input = document.getElementById('firmwareInput');
+  const browseBtn = document.getElementById('firmwareBrowseBtn');
+  const nameEl = document.getElementById('firmwareChipName');
+  const sizeEl = document.getElementById('firmwareChipSize');
+  const checkEl = document.getElementById('firmwareChipCheck');
+  if (!input || !browseBtn) return;
+  browseBtn.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => {
+    const file = input.files[0];
+    if (file) {
+      nameEl.textContent = file.name;
+      sizeEl.textContent = (file.size / 1024).toFixed(1) + ' KB';
+      checkEl.style.visibility = 'visible';
+    } else {
+      nameEl.textContent = 'No file chosen';
+      sizeEl.textContent = '';
+      checkEl.style.visibility = 'hidden';
+    }
+  });
+})();
+
 /* ----------------- UI refs ----------------- */
 const flashBtn = document.getElementById('flashBtn');
 const progressEl = document.getElementById('progress');
@@ -589,8 +1390,13 @@ powerSupplyBtn.addEventListener('click', async () => {
     
     if (result.status === newState) {
       powerSupplyState = newState;
-      powerSupplyBtn.innerHTML = `<i class="fas fa-power-off"></i> Power Supply ${newState.toUpperCase()}`;
-      powerSupplyBtn.style.background = newState === 'on' ? '#e07575' : '#4fb583';
+      powerSupplyBtn.classList.toggle('on', newState === 'on');
+      const powerStateLabel = document.getElementById('powerStateLabel');
+      if (powerStateLabel) powerStateLabel.textContent = newState.toUpperCase();
+      const pillPowerState = document.getElementById('pillPowerState');
+      const pillPowerDot = document.getElementById('pillPowerDot');
+      if (pillPowerState) pillPowerState.textContent = newState.toUpperCase();
+      if (pillPowerDot) pillPowerDot.className = 'status-dot ' + (newState === 'on' ? 'on' : 'off');
       console.log(`[power] Power supply turned ${newState}`);
     } else {
       console.log(`[power] Error turning power ${newState}: ${result.message || 'Unknown error'}`);
@@ -620,11 +1426,23 @@ let lastSelectedKey1 = ''; // track last selected key to clear chart when change
 const serialSlots = {};
 
 function slotFeedbackAdd(slot, text){
+  if (!slot.feedbackEl) return;
   const prefix = (new Date()).toLocaleTimeString() + ' ';
   slot.feedbackEl.innerText += prefix + text + '\n';
   const lines = slot.feedbackEl.innerText.split('\n');
   if(lines.length > 300) slot.feedbackEl.innerText = lines.slice(-300).join('\n');
   slot.feedbackEl.scrollTop = slot.feedbackEl.scrollHeight;
+}
+
+// Drives the sidebar Connection section's status dot + label — separate from
+// connectBtn's own icon/label, which describes the *action* clicking it takes.
+function setSlotStatus(slot, state){
+  if (!slot.statusDot || !slot.statusText) return;
+  const labels = { connecting: 'Connecting…', connected: 'Connected', disconnected: 'Disconnected', error: 'Error' };
+  const dotClass = { connecting: '', connected: 'on', disconnected: 'off', error: 'off' };
+  slot.statusText.textContent = labels[state] || state;
+  slot.statusDot.className = 'status-dot ' + (dotClass[state] || '');
+  updateSerialPill();
 }
 
 function doSlotConnect(slot){
@@ -639,6 +1457,7 @@ function doSlotConnect(slot){
   const baud = (slot.baudSelect.value === 'custom') ? parseInt(slot.customBaud.value || '115200') : parseInt(slot.baudSelect.value);
   slot.connectBtn.disabled = true;
   slot.connectBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
+  setSlotStatus(slot, 'connecting');
   slotFeedbackAdd(slot, `Connecting to ${port}@${baud} ...`);
   socket.emit('connect_serial', { conn_id: slot.connId, port, baud });
   if (slot.connectTimeoutHandle) clearTimeout(slot.connectTimeoutHandle);
@@ -682,11 +1501,16 @@ function initSerialSlots(){
       customBaud: el.querySelector('.slot-custom-baud'),
       connectBtn: el.querySelector('.slot-connect'),
       resetBtn: el.querySelector('.slot-reset'),
-      clearBtn: el.querySelector('.slot-clear'),
-      feedbackEl: el.querySelector('.slot-feedback'),
-      cmdInput: el.querySelector('.slot-cmd'),
-      sendBtn: el.querySelector('.slot-send'),
       refreshBtn: el.querySelector('.slot-refresh'),
+      statusDot: el.querySelector('.slot-status-dot'),
+      statusText: el.querySelector('.slot-status-text'),
+      // The log + command input live in the Serial Monitor panel further down
+      // the page now, not inside this sidebar connection block — so they're
+      // no longer DOM descendants of `el` and have to be found by id instead.
+      clearBtn: document.getElementById('clear-' + connId),
+      feedbackEl: document.getElementById('feedback-' + connId),
+      cmdInput: document.getElementById('cmd-' + connId),
+      sendBtn: document.getElementById('send-' + connId),
       connected: false,
       autoConnectAttempted: false,
       connectTimeoutHandle: null,
@@ -736,6 +1560,20 @@ function getFlashPort(){
   if (slot) return slot.fixedPort || (slot.portSelect ? slot.portSelect.value : '') || '';
   const anySlot = Object.values(serialSlots)[0];
   return anySlot ? (anySlot.fixedPort || (anySlot.portSelect ? anySlot.portSelect.value : '')) : '';
+}
+
+// Header status pill: reflects the primary port's connection state (the
+// common single-board case). With multiple ports configured, this is
+// necessarily a simplification — it doesn't try to summarize all of them.
+function updateSerialPill(){
+  const pillState = document.getElementById('pillSerialState');
+  const pillDot = document.getElementById('pillSerialDot');
+  if (!pillState || !pillDot) return;
+  const primaryProfile = (uiConfigFromServer.serial_ports || []).find(p => p.is_primary_target);
+  const slot = (primaryProfile && serialSlots[primaryProfile.id]) || Object.values(serialSlots)[0];
+  const connected = !!(slot && slot.connected);
+  pillState.textContent = connected ? 'Connected' : 'Disconnected';
+  pillDot.className = 'status-dot ' + (connected ? 'on' : 'off');
 }
 
 /* ----------------- PORTS (auto-detect) ----------------- */
@@ -852,6 +1690,7 @@ socket.on('serial_status', (info) => {
     slot.connectBtn.style.background = '#e07575';
     slot.connectBtn.style.color = '#fff';
     slotFeedbackAdd(slot, `✅ Connected: ${info.port}@${info.baud}`);
+    setSlotStatus(slot, 'connected');
     requestPorts(); // refresh port lists again (other slots may need updating)
     updateYAxisFilterOptions([]); // prepare Y-axis dropdowns for dynamic data
   } else if (info.status === 'error') {
@@ -861,6 +1700,7 @@ socket.on('serial_status', (info) => {
     slot.connectBtn.style.background = '#4fb583';
     slot.connectBtn.style.color = '#fff';
     slotFeedbackAdd(slot, `🔴 Serial error: ${info.message || ''}`);
+    setSlotStatus(slot, 'error');
   } else {
     slot.connected = false;
     slot.connectBtn.disabled = false;
@@ -868,6 +1708,7 @@ socket.on('serial_status', (info) => {
     slot.connectBtn.style.background = '#4fb583';
     slot.connectBtn.style.color = '#fff';
     slotFeedbackAdd(slot, `🔴 Disconnected`);
+    setSlotStatus(slot, 'disconnected');
   }
 });
 
@@ -988,13 +1829,13 @@ function renderUnitLatex(el, unitSource){
 function createControlElement(cfg){
   const wrapper = document.createElement('div');
   wrapper.className='control-row';
-  wrapper.style.border='1px solid #333';
+  wrapper.style.border='1px solid #1a1f2b';
   wrapper.style.padding='8px';
   wrapper.style.borderRadius='8px';
   if(cfg.locked){
     wrapper.classList.add('locked-control');
     wrapper.dataset.requiredId = cfg.requiredId || '';
-    wrapper.style.borderColor = '#3fc6d688';
+    wrapper.style.borderColor = '#3b82f688';
   }
 
   const content = document.createElement('div');
@@ -1015,7 +1856,7 @@ function createControlElement(cfg){
     removeBtn = document.createElement('button');
     removeBtn.innerHTML = '<i class="fas fa-xmark"></i>';
     removeBtn.title = 'Remove control';
-    removeBtn.style.cssText = 'width:22px;height:22px;padding:0;border-radius:50%;border:none;background:#e07575;color:#1c1c1f;font-size:11px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-left:8px;';
+    removeBtn.style.cssText = 'width:22px;height:22px;padding:0;border-radius:50%;border:none;background:#e07575;color:#0d1117;font-size:11px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-left:8px;';
     removeBtn.onclick = () => { wrapper.remove(); saveLayoutToStorage(); };
   }
 
@@ -1316,7 +2157,7 @@ const knownDataKeys = new Set();
 const chart = new Chart(chartCtx, {
   type: 'line',
   data: { labels: [], datasets: [
-    { label: 'Series 1', data: [], borderColor: '#3fc6d6', borderWidth: 2, pointRadius: 0, fill: false, yAxisID: 'y' },
+    { label: 'Series 1', data: [], borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, fill: false, yAxisID: 'y' },
     { label: 'Series 2', data: [], borderColor: '#00ff7f', borderWidth: 2, pointRadius: 0, fill: false, yAxisID: 'y1', hidden: true }
   ]},
   options: {
@@ -1773,6 +2614,7 @@ function applyUiConfig(cfg) {
   setDisabled(document.getElementById('boardType'), !controls.board_select);
   setDisabled(document.getElementById('flashBtn'), !controls.flash_firmware);
   setDisabled(document.getElementById('firmwareInput'), !controls.flash_firmware);
+  setDisabled(document.getElementById('firmwareBrowseBtn'), !controls.flash_firmware);
   document.querySelectorAll('.slot-connect').forEach(btn => setDisabled(btn, !controls.serial_connect));
   document.querySelectorAll('.slot-reset').forEach(btn => setDisabled(btn, !controls.serial_connect));
   setDisabled(document.getElementById('factoryResetBtn'), !controls.factory_reset);
@@ -1828,7 +2670,7 @@ document.getElementById('expandChartBtn').addEventListener('click', () => {
   if (mode === 'oscilloscope') {
     url = `/oscilloscope?key=${sessionKey}`;
   } else {
-    url = `/newchart?key=${sessionKey}`;
+    url = `/chart?key=${sessionKey}`;
   }
   const win = window.open(url, '_blank');
   if (win) openedWindows.push(win);
@@ -1862,19 +2704,51 @@ if (videoFeed) {
 }
 const toggleVideoBtn = document.getElementById('toggleVideo');
 toggleVideoBtn.addEventListener('click', () => {
+  const pillState = document.getElementById('pillCameraState');
+  const pillDot = document.getElementById('pillCameraDot');
   if(videoFeed.style.display === 'none'){
     videoFeed.style.display = 'block';
     toggleVideoBtn.innerHTML = '<i class="fas fa-pause"></i>';
     toggleVideoBtn.title = 'Turn video off';
+    if (pillState) pillState.textContent = 'Live';
+    if (pillDot) pillDot.className = 'status-dot on';
   } else {
     videoFeed.style.display = 'none';
     toggleVideoBtn.innerHTML = '<i class="fas fa-play"></i>';
     toggleVideoBtn.title = 'Turn video on';
+    if (pillState) pillState.textContent = 'Off';
+    if (pillDot) pillDot.className = 'status-dot off';
   }
 });
 
 let audioPC = null;
 let audioStarting = false;
+
+/* ----------------- Cross-window audio state sync -----------------
+   The fullscreen video popup (camera.html) runs its own independent WebRTC
+   audio connection — the actual audio stream can't be shared across browser
+   windows — but the on/off *state* should still track together: opening
+   fullscreen should pick up whatever this page's audio is currently doing,
+   and toggling audio in either place should update both. Each side re-checks
+   its own current state before acting on an incoming message, so a state
+   echoing back after being mirrored just resolves to a no-op instead of an
+   infinite back-and-forth. */
+function broadcastAudioState(on) {
+  openedWindows.forEach(win => {
+    if (win && !win.closed) {
+      try { win.postMessage({ type: 'lab-audio-state', on }, window.location.origin); } catch (e) {}
+    }
+  });
+}
+window.addEventListener('message', (event) => {
+  if (event.origin !== window.location.origin || !event.data) return;
+  if (event.data.type === 'lab-audio-query') {
+    if (event.source) { try { event.source.postMessage({ type: 'lab-audio-state', on: !!audioPC }, window.location.origin); } catch (e) {} }
+  } else if (event.data.type === 'lab-audio-state') {
+    if (event.data.on && !audioPC && !audioStarting) startAudio();
+    else if (!event.data.on && (audioPC || audioStarting)) stopAudio();
+  }
+});
 
 async function startAudio() {
     if (audioPC || audioStarting) return; // already started or starting
@@ -1922,6 +2796,7 @@ async function startAudio() {
         toggleBtn.innerHTML = '<i class="fas fa-volume-high"></i>';
         toggleBtn.title = 'Mute audio';
         audioStarting = false;
+        broadcastAudioState(true);
     } catch (error) {
         console.error('Failed to start audio:', error);
         stopAudio();
@@ -1940,6 +2815,7 @@ function stopAudio() {
     toggleBtn.disabled = false;
     toggleBtn.innerHTML = '<i class="fas fa-volume-xmark"></i>';
     toggleBtn.title = 'Start audio';
+    broadcastAudioState(false);
 }
 
 const audioFeed = document.getElementById('audioFeed');
@@ -2160,11 +3036,11 @@ powerSavePopup.style.cssText = `
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: #1c1c1f;
+  background: #0d1117;
   color: #e0e0e0;
   padding: 24px;
   border-radius: 10px;
-  border: 1px solid #454549;
+  border: 1px solid #2c3341;
   box-shadow: 0 8px 30px rgba(0,0,0,0.5);
   z-index: 10000;
   text-align: center;
@@ -2175,14 +3051,14 @@ powerSavePopup.innerHTML = `
   <h2 style="color: #e07575; margin: 0 0 16px 0;"><i class="fas fa-triangle-exclamation"></i> Power Saving Alert</h2>
   <p style="margin: 0 0 24px 0;">Your session duration is very short (less than 5 seconds). The power supply will be automatically turned off to prevent unnecessary power waste.</p>
   <button onclick="document.getElementById('powerSavePopup').style.display = 'none'"
-          style="padding: 10px 20px; background: #3fc6d6; color: #041726; border: none; border-radius: 6px; font-weight: 700; cursor: pointer;">
+          style="padding: 10px 20px; background: #3b82f6; color: #041726; border: none; border-radius: 6px; font-weight: 700; cursor: pointer;">
     <i class="fas fa-check"></i> OK
   </button>
 `;
 document.body.appendChild(powerSavePopup);
 
 if (!sessionKey) {
-  document.body.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100vh; background:#1c1c1f; color:#e0e0e0; font-size:2em;">Invalid Session. Please book a slot from My Bookings.<br><br><span style="font-size:0.5em;">Redirecting...</span></div><button onclick="window.location.href=\'' + BOOKING_PAGE_URL + '\'" style="padding:10px 20px; background:#3fc6d6; color:#041726; border:none; border-radius:6px; font-weight:700;"><i class="fas fa-calendar-check"></i> Go to My Bookings</button>';
+  document.body.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100vh; background:#0d1117; color:#e0e0e0; font-size:2em;">Invalid Session. Please book a slot from My Bookings.<br><br><span style="font-size:0.5em;">Redirecting...</span></div><button onclick="window.location.href=\'' + BOOKING_PAGE_URL + '\'" style="padding:10px 20px; background:#3b82f6; color:#041726; border:none; border-radius:6px; font-weight:700;"><i class="fas fa-calendar-check"></i> Go to My Bookings</button>';
   // Auto-redirect after 2 seconds
   setTimeout(function() {
     clearLayoutOnSessionEnd();

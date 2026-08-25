@@ -518,9 +518,34 @@ def _ui_config_body_from_form(form):
             'serial_plotter_allow_port_switch': form.get('serial_plotter_allow_port_switch') == 'on',
             'serial_plotter_default_port_id': form.get('serial_plotter_default_port_id') or '',
             'serial_plotter_required_prefixes': required_prefixes,
+            'debug_board_id': form.get('debug_board_id') or '',
+            'debug_port': form.get('debug_port') or '',
+            'osc_board_id': form.get('osc_board_id') or '',
+            'osc_port': form.get('osc_port') or '',
         },
         'experiment_name': form.get('experiment_name') or '',
     }
+
+
+# Mirrors remote_lab_pi/debug/boards.py's BOARDS keys exactly -- the Master
+# doesn't import that package, so this list is kept in lockstep by hand.
+DEBUG_BOARDS = [
+    ('', "Auto (use this Lab Pi's Microcontroller Board field)"),
+    ('stm32', 'STM32 (Cortex-M, ST-Link)'),
+    ('nucleo_f446re', 'ST Nucleo-F446RE (STM32F4, onboard ST-Link)'),
+    ('black_pill', 'Black Pill (STM32F4x1, ST-Link/CMSIS-DAP)'),
+    ('tiva', 'TI Tiva C Series (Cortex-M, onboard ICDI)'),
+]
+
+# Same option set as the Microcontroller Board dropdown on the Lab Pi edit
+# page (templates/admin/edit_device.html) -- used for the Oscilloscope's
+# (informational) MCU field, which isn't restricted to debug-capable boards.
+BOARD_TYPE_CHOICES = [
+    ('arduino', 'Arduino'), ('attiny', 'ATTiny'), ('stm32', 'STM32'),
+    ('black_pill', 'Black Pill'), ('esp32', 'ESP32'), ('esp8266', 'ESP8266'),
+    ('nucleo_f446re', 'Nucleo F446RE'), ('tiva', 'Tiva'),
+    ('tms320f28377s', 'TMS320F28377S'), ('msp430', 'MSP430'), ('generic', 'Generic'),
+]
 
 
 def end_lab_pi_session(session_key, lab_pi_url=None):
@@ -2835,6 +2860,12 @@ def experiment():
     # Always render the Master's own page — never redirect the browser to
     # the Lab Pi's address. Its JS talks back to Master routes/sockets only,
     # which proxy through to lab_pi_url server-side.
+    # Hardware debugging (GDB/OpenOCD) only exists for board types with an
+    # actual debug profile on the Lab Pi side (see remote_lab_pi/debug/boards.py)
+    # — everything else (Arduino, ESP32, MSP430, ...) needs a different
+    # toolchain entirely and just doesn't get the sidebar entry for it.
+    DEBUGGABLE_BOARD_TYPES = {'stm32', 'nucleo_f446re', 'black_pill', 'tiva'}
+
     return render_template('index.html',
         session_duration=duration,
         session_end_time=session_end_time,
@@ -2844,6 +2875,7 @@ def experiment():
         experiment_name=exp_name,
         ui_config=ui_config,
         booking_page_url=url_for('my_bookings'),
+        debuggable=board_type in DEBUGGABLE_BOARD_TYPES,
     )
 
 @app.route('/add_session', methods=['POST'])
@@ -3512,6 +3544,30 @@ def flash_firmware():
         print(f"Error proxying flash to Lab Pi: {e}")
         return jsonify({'status': f'Failed to reach Lab Pi: {e}'}), 502
 
+@app.route('/debug/upload-elf', methods=['POST'])
+@login_required
+def debug_upload_elf():
+    session_key = request.form.get('session_key')
+    lab_pi_url = get_session_lab_pi_url(session_key)
+    if not lab_pi_url:
+        return jsonify({'status': 'No Lab Pi assigned to this session'}), 400
+
+    elf = request.files.get('elf')
+    if not elf:
+        return jsonify({'status': 'No ELF file uploaded'}), 400
+
+    try:
+        response = requests.post(
+            f'{lab_pi_url}/debug/upload-elf',
+            files={'elf': (secure_filename(elf.filename), elf.stream, elf.mimetype)},
+            timeout=15,
+        )
+        return jsonify(response.json()), response.status_code
+    except Exception as e:
+        print(f"Error proxying ELF upload to Lab Pi: {e}")
+        return jsonify({'status': f'Failed to reach Lab Pi: {e}'}), 502
+
+
 @app.route('/factory_reset', methods=['POST'])
 @login_required
 def factory_reset():
@@ -4166,6 +4222,9 @@ def admin_lab_pi_ui_settings(lab_pi_id):
     return render_template('admin/lab_pi_ui_settings.html', device=lab_pi, cfg=cfg,
                           control_keys=[(c['key'], c['label']) for c in cfg.get('control_keys', [])],
                           available_ports=cfg.get('available_ports', []),
+                          osc_available_ports=cfg.get('osc_available_ports', []),
+                          debug_boards=DEBUG_BOARDS,
+                          board_type_choices=BOARD_TYPE_CHOICES,
                           sibling_lab_pis=sibling_lab_pis)
 
 
@@ -4296,11 +4355,22 @@ def admin_lab_pi_ui_copy_to(lab_pi_id):
     if warn:
         warnings.append(f'Default plotter port: {warn}')
 
+    # debug_port/osc_port are /dev/serial/by-id/... paths, exactly as
+    # per-Pi-specific as serial_ports' own device paths above — never carry
+    # them to another Lab Pi's hardware. debug_board_id/osc_board_id are
+    # plain MCU identifiers (not paths), safe to copy as-is.
     body = {
         'controls': source_cfg.get('controls', {}),
-        'defaults': {**source_cfg.get('defaults', {}), 'serial_plotter_default_port_id': default_port_id},
+        'defaults': {
+            **source_cfg.get('defaults', {}),
+            'serial_plotter_default_port_id': default_port_id,
+            'debug_port': '',
+            'osc_port': '',
+        },
         'experiment_name': source_cfg.get('experiment_name', ''),
     }
+    if source_cfg.get('defaults', {}).get('debug_port') or source_cfg.get('defaults', {}).get('osc_port'):
+        warnings.append('Debug probe / Oscilloscope port overrides are per-Pi device paths and were not copied — set them on the target Lab Pi if needed.')
     ok, result = _lab_pi_admin_api(target, 'POST', '/api/admin/ui-config', body)
     if not ok:
         flash(f'Copy failed: {result}', 'danger')
@@ -4691,6 +4761,7 @@ def _relay_from_browser(event):
 for _relayed_event in (
     'list_ports', 'connect_serial', 'disconnect_serial', 'send_command',
     'reset_serial', 'waveform_config', 'update_osc_settings', 'osc_auto_level',
+    'debug_start', 'debug_stop', 'debug_load_symbols', 'debug_command',
 ):
     socketio.on_event(_relayed_event, _relay_from_browser(_relayed_event))
 

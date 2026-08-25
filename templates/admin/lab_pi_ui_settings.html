@@ -70,6 +70,18 @@
         </div>
         {% endif %}
 
+        {% macro generic_port_picker(field_id, field_name, current_value, ports) %}
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <select class="iken-input" onchange="if(this.value) document.getElementById('{{ field_id }}').value = this.value;" style="width:220px">
+                <option value="">(pick detected)</option>
+                {% for ap in ports %}
+                <option value="{{ ap.path }}" {{ 'selected' if ap.path == current_value }}>{{ ap.label }}{{ ' -> ' + ap.resolved if ap.resolved }}</option>
+                {% endfor %}
+            </select>
+            <input class="iken-input" type="text" id="{{ field_id }}" name="{{ field_name }}" value="{{ current_value }}" placeholder="or type a custom /dev/serial/by-id/... path" style="flex:1;min-width:200px">
+        </div>
+        {% endmacro %}
+
         <form id="mainSettingsForm" method="POST" action="{{ url_for('admin_lab_pi_ui_settings', lab_pi_id=device.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="all_control_keys" value="{{ control_keys | map('first') | join(',') }}">
@@ -123,6 +135,46 @@
                         <input class="iken-input" type="text" id="serial_plotter_required_prefixes" name="serial_plotter_required_prefixes"
                                value="{{ cfg.defaults.serial_plotter_required_prefixes | join(', ') }}" placeholder="e.g. DATA:, SENSOR:">
                         <p class="note">Comma-separated. If set, only serial lines starting with one of these (case-insensitive) are plotted. Leave blank to plot any line that looks like data.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="admin-section settings-card">
+                    <h4>Debug (GDB/OpenOCD)</h4>
+                    <p class="sub">Only matters when this Lab Pi's Microcontroller Board (on the Edit page) has a debug profile. Pin an exact MCU/probe here if this Pi ever has more than one debug-capable device attached, so Connect in the student's Debug panel always targets the right one instead of whichever OpenOCD finds first.</p>
+                    <div class="inline-form-row">
+                        <label class="field-label" for="debug_board_id">MCU to debug</label>
+                        <select class="iken-input" id="debug_board_id" name="debug_board_id" style="width:280px">
+                            {% for id, label in debug_boards %}
+                            <option value="{{ id }}" {{ 'selected' if cfg.defaults.debug_board_id == id }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="inline-form-row">
+                        <label class="field-label" for="debug_port">Debug probe (by ID)</label>
+                        {{ generic_port_picker('debug_port', 'debug_port', cfg.defaults.debug_port, available_ports) }}
+                        <p class="note">Leave blank to let OpenOCD pick whichever probe it finds. Pick a stable /dev/serial/by-id/... entry here rather than a raw /dev/ttyACM* index &mdash; those can collide with the Oscilloscope's own port or shift after a replug.</p>
+                    </div>
+                </div>
+
+                <div class="admin-section settings-card">
+                    <h4>Oscilloscope</h4>
+                    <p class="sub">The Oscilloscope auto-detects its board by USB VID/PID by default. If this Lab Pi has another device that could match, or auto-detect keeps picking the wrong /dev/ttyACM* index, pin it here explicitly.</p>
+                    <div class="inline-form-row">
+                        <label class="field-label" for="osc_board_id">Oscilloscope MCU</label>
+                        <select class="iken-input" id="osc_board_id" name="osc_board_id" style="width:280px">
+                            <option value="">-- Not set --</option>
+                            {% for id, label in board_type_choices %}
+                            <option value="{{ id }}" {{ 'selected' if cfg.defaults.osc_board_id == id }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="note">Informational only &mdash; documents which board the scope firmware runs on; doesn't change how it's detected.</p>
+                    </div>
+                    <div class="inline-form-row">
+                        <label class="field-label" for="osc_port">Oscilloscope port (by ID)</label>
+                        {{ generic_port_picker('osc_port', 'osc_port', cfg.defaults.osc_port, osc_available_ports) }}
+                        <p class="note">Leave blank for auto-detect (current behavior). Setting this forces a specific /dev/serial/by-id/... device instead of matching by VID/PID &mdash; takes effect immediately, no Lab Pi restart needed.</p>
                     </div>
                 </div>
             </div>

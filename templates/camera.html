@@ -24,18 +24,35 @@
 <meta charset="utf-8" />
 <title>Live Video Feed - Embedded Virtual Lab</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <style>
-html, body { height: 100%; margin: 0; font-family: 'Inter', sans-serif; background: #1c1c2b; color: #e0e0e0; overflow: hidden; }
-.fullscreen-video { width: 100vw; height: 100vh; object-fit: cover; border: none; }
-.controls { position: absolute; top: 20px; right: 20px; display: flex; gap: 10px; z-index: 10; }
-.button { padding: 10px 15px; border-radius: 6px; border: none; cursor: pointer; background: #00f0ff; color: #041726; font-weight: 700; }
+html, body { height: 100%; margin: 0; font-family: 'Inter', sans-serif; background: #0d1117; color: #e0e0e0; overflow: hidden; }
+.video-container { position: relative; width: 100vw; height: 100vh; background: #000; --zoom-factor: 1; --pan-x: 0; --pan-y: 0; overflow: hidden; }
+.video-container img { display: block; width: 100%; height: 100%; object-fit: cover; transform: scale(var(--zoom-factor)) translate(var(--pan-x), var(--pan-y)); transition: transform 0.1s ease; }
+.controls-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; pointer-events: none; opacity: 0; transition: opacity .18s ease; }
+.video-container:hover .controls-overlay, .video-container:focus-within .controls-overlay { opacity: 1; }
+.controls-top { display: flex; gap: 8px; justify-content: flex-end; pointer-events: auto; }
+.controls-bottom { display: flex; justify-content: space-between; align-items: center; pointer-events: auto; }
+.vid-btn { width: 38px; height: 38px; border-radius: 50%; background: rgba(13,17,23,0.85); color: #3b82f6; border: 1px solid #3b82f6; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s ease, color .15s ease; }
+.vid-btn:hover { background: #3b82f6; color: #041726; }
+.button { padding: 10px 15px; border-radius: 6px; border: none; cursor: pointer; background: #3b82f6; color: #041726; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; pointer-events: auto; }
 </style>
 </head>
 <body>
-<img id="videoFeed" class="fullscreen-video" alt="camera">
-<audio id="audioFeed" autoplay></audio>
-<div class="controls">
-    <button id="backBtn" class="button">Back to Main</button>
+<div class="video-container" id="videoContainer">
+  <img id="videoFeed" alt="camera">
+  <audio id="audioFeed" autoplay></audio>
+  <div class="controls-overlay">
+    <div class="controls-top">
+      <button id="zoomIn" class="vid-btn" title="Zoom in"><i class="fas fa-magnifying-glass-plus"></i></button>
+      <button id="zoomOut" class="vid-btn" title="Zoom out"><i class="fas fa-magnifying-glass-minus"></i></button>
+      <button id="zoomReset" class="vid-btn" title="Reset zoom"><i class="fas fa-arrows-rotate"></i></button>
+    </div>
+    <div class="controls-bottom">
+      <button id="toggleAudio" class="button" title="Start audio"><i class="fas fa-volume-xmark"></i> Start Audio</button>
+      <button id="backBtn" class="button"><i class="fas fa-arrow-left"></i> Back to Main</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -60,13 +77,81 @@ console.log('Audio offer URL (proxied via Master):', audioOfferUrl);
 // Set video feed dynamically
 document.getElementById('videoFeed').src = videoUrl;
 
-// Audio setup (similar to main page)
+/* ----------------- Zoom / pan (same clamped behavior as the embedded view) ----------------- */
+const videoContainer = document.getElementById('videoContainer');
+const zoomInBtn = document.getElementById('zoomIn');
+const zoomOutBtn = document.getElementById('zoomOut');
+const zoomResetBtn = document.getElementById('zoomReset');
+let currentZoom = 1;
+let panX = 0;
+let panY = 0;
+const minZoom = 1; // never zoom out past "filled" — anything below 1 just exposes the container's black background as borders
+const maxZoom = 5;
+const zoomStep = 0.1;
+
+function updateZoom() {
+  // Clamp panning to the zoomed image's own extent — without this, dragging
+  // (or zooming back toward 1x while still panned) can push the image past
+  // its edge and expose the black background on the opposite side.
+  if (currentZoom <= 1) {
+    panX = 0;
+    panY = 0;
+  } else {
+    const rect = videoContainer.getBoundingClientRect();
+    const maxPanX = (rect.width * (currentZoom - 1)) / (2 * currentZoom);
+    const maxPanY = (rect.height * (currentZoom - 1)) / (2 * currentZoom);
+    panX = Math.max(-maxPanX, Math.min(maxPanX, panX));
+    panY = Math.max(-maxPanY, Math.min(maxPanY, panY));
+  }
+  videoContainer.style.setProperty('--zoom-factor', currentZoom);
+  videoContainer.style.setProperty('--pan-x', panX + 'px');
+  videoContainer.style.setProperty('--pan-y', panY + 'px');
+}
+
+zoomResetBtn.addEventListener('click', () => { currentZoom = 1; panX = 0; panY = 0; updateZoom(); });
+zoomInBtn.addEventListener('click', () => { if (currentZoom < maxZoom) { currentZoom += zoomStep; updateZoom(); } });
+zoomOutBtn.addEventListener('click', () => { if (currentZoom > minZoom) { currentZoom -= zoomStep; updateZoom(); } });
+
+videoContainer.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (e.deltaY < 0) { if (currentZoom < maxZoom) { currentZoom += zoomStep; updateZoom(); } }
+  else { if (currentZoom > minZoom) { currentZoom -= zoomStep; updateZoom(); } }
+});
+
+let isDragging = false, lastMouseX = 0, lastMouseY = 0;
+videoContainer.addEventListener('mousedown', (e) => {
+  if (currentZoom > 1) {
+    isDragging = true; lastMouseX = e.clientX; lastMouseY = e.clientY;
+    videoContainer.style.cursor = 'grabbing'; e.preventDefault();
+  }
+});
+videoContainer.addEventListener('mousemove', (e) => {
+  if (isDragging && currentZoom > 1) {
+    panX += e.clientX - lastMouseX; panY += e.clientY - lastMouseY;
+    lastMouseX = e.clientX; lastMouseY = e.clientY;
+    updateZoom();
+  }
+});
+videoContainer.addEventListener('mouseup', () => { isDragging = false; videoContainer.style.cursor = currentZoom > 1 ? 'grab' : 'default'; });
+videoContainer.addEventListener('mouseleave', () => { isDragging = false; videoContainer.style.cursor = currentZoom > 1 ? 'grab' : 'default'; });
+
+/* ----------------- Audio (explicit toggle, not autoplay-on-load) -----------------
+   The old version called startAudio() automatically on page load. Browsers'
+   autoplay policies are inconsistent about honoring that without a genuine
+   user gesture inside *this* document (a click on the button that opened the
+   popup, on the *parent* page, doesn't reliably count) — which is exactly
+   why audio silently didn't come through here. Making it an explicit button
+   click sidesteps the policy entirely, and matches the main page's own
+   audio control instead of behaving differently in fullscreen. */
 let audioPC = null;
 let audioStarting = false;
+const toggleAudioBtn = document.getElementById('toggleAudio');
 
 async function startAudio() {
     if (audioPC || audioStarting) return;
     audioStarting = true;
+    toggleAudioBtn.disabled = true;
+    toggleAudioBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
 
     try {
         audioPC = new RTCPeerConnection();
@@ -102,11 +187,15 @@ async function startAudio() {
         const answer = await response.json();
         await audioPC.setRemoteDescription(answer);
 
+        toggleAudioBtn.disabled = false;
+        toggleAudioBtn.innerHTML = '<i class="fas fa-volume-high"></i> Mute Audio';
         audioStarting = false;
+        broadcastAudioState(true);
     } catch (error) {
         console.error('Failed to start audio:', error);
         stopAudio();
         audioStarting = false;
+        alert('Failed to start audio. Please check console for details.');
     }
 }
 
@@ -116,10 +205,37 @@ function stopAudio() {
         audioPC = null;
     }
     document.getElementById('audioFeed').srcObject = null;
+    toggleAudioBtn.disabled = false;
+    toggleAudioBtn.innerHTML = '<i class="fas fa-volume-xmark"></i> Start Audio';
+    broadcastAudioState(false);
 }
 
-// Auto-start audio on load
-startAudio();
+toggleAudioBtn.addEventListener('click', () => {
+    if (audioPC || audioStarting) stopAudio();
+    else startAudio();
+});
+
+/* ----------------- Cross-window audio state sync -----------------
+   This popup runs its own independent WebRTC audio connection — it can't
+   literally share the main page's audio stream — but the on/off state
+   should still track together: opening this popup should pick up whatever
+   the main page's audio is doing right now, and toggling audio here should
+   update the main page too (see the matching code in index.html). */
+function broadcastAudioState(on) {
+  if (window.opener && !window.opener.closed) {
+    try { window.opener.postMessage({ type: 'lab-audio-state', on }, window.location.origin); } catch (e) {}
+  }
+}
+window.addEventListener('message', (event) => {
+  if (event.origin !== window.location.origin || !event.data) return;
+  if (event.data.type === 'lab-audio-state') {
+    if (event.data.on && !audioPC && !audioStarting) startAudio();
+    else if (!event.data.on && (audioPC || audioStarting)) stopAudio();
+  }
+});
+if (window.opener) {
+  try { window.opener.postMessage({ type: 'lab-audio-query' }, window.location.origin); } catch (e) {}
+}
 </script>
 </body>
 </html>
